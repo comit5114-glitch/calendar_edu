@@ -8,15 +8,18 @@ export default function Home() {
   const [voiceText, setVoiceText] = useState('마이크 버튼을 누르고 교육 일정을 말해주세요.');
 
   const handleMicClick = () => {
-    if (!('webkitSpeechRecognition' in window)) {
-      alert('음성 인식을 지원하지 않는 브라우저입니다.');
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      alert('음성 인식을 지원하지 않는 브라우저입니다. 안드로이드는 Chrome, 아이폰은 Safari를 이용해주세요.');
       return;
     }
 
-    const SpeechRecognition = (window as any).webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
     recognition.lang = 'ko-KR';
     recognition.interimResults = false;
+    recognition.maxAlternatives = 1; // 모바일 최적화 옵션
+    recognition.continuous = false;
 
     recognition.onstart = () => {
       setIsRecording(true);
@@ -102,6 +105,7 @@ export default function Home() {
       setIsRecording(false);
       if (event.error !== 'no-speech') {
         setVoiceText(`오류 발생: ${event.error}`);
+        alert(`마이크 권한 오류가 발생했습니다 (${event.error}). 브라우저 설정에서 마이크를 허용해주시거나 Chrome 브라우저를 이용해주세요.`);
       } else {
         setVoiceText('마이크 버튼을 누르고 교육 일정을 말해주세요.');
       }
@@ -114,7 +118,7 @@ export default function Home() {
     <div>
       <div className="top-bar">
         <h1>대시보드</h1>
-        <button className="btn-primary">
+        <button className="btn-primary" onClick={handleMicClick}>
           <i className="material-icons">add</i> 음성으로 일정 등록
         </button>
       </div>
@@ -122,24 +126,24 @@ export default function Home() {
       {/* Stats Row (Desktop mainly, 2x2 on Mobile) */}
       <div className="stats-row">
         <div className="stat-card">
-          <span className="stat-title">7월 교육 일정</span>
-          <span className="stat-value">12<span style={{fontSize: '1rem'}}>건</span></span>
-          <span className="stat-sub">예정 8건 / 완료 4건</span>
+          <span className="stat-title">이번 달 교육 일정</span>
+          <span className="stat-value">0<span style={{fontSize: '1rem'}}>건</span></span>
+          <span className="stat-sub">예정 0건 / 완료 0건</span>
         </div>
         <div className="stat-card">
-          <span className="stat-title">7월 총 교육시간</span>
-          <span className="stat-value">24<span style={{fontSize: '1rem'}}>시간</span></span>
-          <span className="stat-sub" style={{color: 'var(--success)'}}>전월 대비 +20%</span>
+          <span className="stat-title">이번 달 총 교육시간</span>
+          <span className="stat-value">0<span style={{fontSize: '1rem'}}>시간</span></span>
+          <span className="stat-sub" style={{color: 'var(--text-muted)'}}>데이터 없음</span>
         </div>
         <div className="stat-card">
-          <span className="stat-title">7월 총 강사료</span>
-          <span className="stat-value">1,200,000<span style={{fontSize: '1rem'}}>원</span></span>
-          <span className="stat-sub" style={{color: 'var(--success)'}}>전월 대비 +15%</span>
+          <span className="stat-title">이번 달 총 강사료</span>
+          <span className="stat-value">0<span style={{fontSize: '1rem'}}>원</span></span>
+          <span className="stat-sub" style={{color: 'var(--text-muted)'}}>데이터 없음</span>
         </div>
         <div className="stat-card">
           <span className="stat-title">미정산 금액</span>
-          <span className="stat-value" style={{color: 'var(--warning)'}}>900,000<span style={{fontSize: '1rem'}}>원</span></span>
-          <span className="stat-sub">정산 필요 3건</span>
+          <span className="stat-value" style={{color: 'var(--warning)'}}>0<span style={{fontSize: '1rem'}}>원</span></span>
+          <span className="stat-sub">정산 필요 0건</span>
         </div>
       </div>
 
