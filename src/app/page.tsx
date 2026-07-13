@@ -1,11 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { parseKoreanVoice } from '@/utils/nlp';
+import { getMonthlyStats, saveEventToLocal } from '@/utils/storage';
 
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
   const [voiceText, setVoiceText] = useState('마이크 버튼을 누르고 교육 일정을 말해주세요.');
+  
+  const [stats, setStats] = useState({ count: 0, totalDuration: 0, totalFee: 0 });
+
+  useEffect(() => {
+    // 현재 달(예: '2026-07') 기준으로 통계 불러오기
+    const now = new Date();
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    setStats(getMonthlyStats(monthStr));
+  }, []);
 
   const handleMicClick = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -31,7 +41,6 @@ export default function Home() {
       setVoiceText(`인식됨: "${transcript}"`);
       setIsRecording(false);
       
-      // 자체 NLP 엔진으로 분석
       const parsedData = parseKoreanVoice(transcript);
       console.log('분석 결과:', parsedData);
       
@@ -42,61 +51,59 @@ export default function Home() {
         window.speechSynthesis.speak(utterance);
         alert(msg);
       } else {
-        setVoiceText('일정을 구글 캘린더와 시트에 저장하는 중...');
+        setVoiceText('일정을 시트에 자동 기록하는 중...');
         
-        // 캘린더에 저장
-        fetch('/api/calendar', {
+        // 시트에만 기록 (강사료 계산 로직)
+        const duration = parsedData.duration || 2;
+        const isDibe = parsedData.course?.includes('디베') || transcript.includes('디베');
+        
+        let hourlyRate = 30000;
+        let basePay = 0;
+        let totalFee = duration * hourlyRate;
+        
+        if (isDibe) {
+          const blocks = Math.ceil(duration / 2); // 2시간당 1블럭
+          basePay = 12100 * 0.5; // 6050원
+          totalFee = (duration * hourlyRate) + (blocks * basePay);
+        }
+
+        const feeData = {
+          ...parsedData,
+          date: parsedData.date || new Date().toISOString().split('T')[0],
+          start: parsedData.start || '09:00',
+          end: parsedData.end || '11:00',
+          duration: duration,
+          fee: hourlyRate,
+          basePay: isDibe ? basePay : 0,
+          totalFee: totalFee
+        };
+        
+        fetch('/api/sheets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(parsedData)
+          body: JSON.stringify(feeData)
         })
-        .then(res => res.json())
-        .then(calendarRes => {
-          if (calendarRes.success) {
-            // 시트에 기록 (강사료 계산 로직)
-            const duration = parsedData.duration || 2;
-            const isDibe = parsedData.course?.includes('디베') || transcript.includes('디베');
-            
-            let hourlyRate = 30000;
-            let basePay = 0;
-            let totalFee = duration * hourlyRate;
-            
-            // '디베' 일정이면 기본급(12,100 * 0.5 = 6050원)을 2시간 단위(각각)로 추가
-            if (isDibe) {
-              const blocks = Math.ceil(duration / 2); // 2시간당 1블럭
-              basePay = 12100 * 0.5; // 6050원
-              totalFee = (duration * hourlyRate) + (blocks * basePay);
-            }
-
-            const feeData = {
-              ...parsedData,
-              duration: duration,
-              fee: hourlyRate,
-              basePay: isDibe ? basePay : 0,
-              totalFee: totalFee
-            };
-            
-            return fetch('/api/sheets', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(feeData)
-            });
-          } else {
-            throw new Error('캘린더 저장 실패');
-          }
+        .then(async res => {
+          const data = await res.json();
+          if (!data.success) throw new Error(`[시트 에러] ${data.error || data.message || '알 수 없는 에러'}`);
+          return data;
         })
-        .then(res => res.json())
         .then(sheetsRes => {
-          if (sheetsRes.success) {
-            setVoiceText('✅ 캘린더 및 시트 등록이 완료되었습니다!');
-            alert('일정이 성공적으로 등록되고 강사료가 기록되었습니다.');
-          } else {
-            throw new Error('시트 저장 실패');
-          }
+          // 로컬 저장소에 추가
+          saveEventToLocal(feeData as any);
+          
+          // 화면 통계 즉시 갱신
+          const now = new Date();
+          const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+          setStats(getMonthlyStats(monthStr));
+
+          setVoiceText('✅ 시트 등록 및 내 캘린더 저장이 완료되었습니다!');
+          alert('일정이 성공적으로 등록되고 강사료가 기록되었습니다.');
         })
         .catch(err => {
           console.error(err);
-          setVoiceText('❌ 저장 중 오류가 발생했습니다.');
+          setVoiceText(`❌ 저장 실패: ${err.message}`);
+          alert(`에러 원인: ${err.message}`);
         });
       }
     };
@@ -123,27 +130,24 @@ export default function Home() {
         </button>
       </div>
 
-      {/* Stats Row (Desktop mainly, 2x2 on Mobile) */}
+      {/* Stats Row */}
       <div className="stats-row">
         <div className="stat-card">
           <span className="stat-title">이번 달 교육 일정</span>
-          <span className="stat-value">0<span style={{fontSize: '1rem'}}>건</span></span>
-          <span className="stat-sub">예정 0건 / 완료 0건</span>
+          <span className="stat-value">{stats.count}<span style={{fontSize: '1rem'}}>건</span></span>
+          <span className="stat-sub" style={{color: 'var(--primary)'}}>나의 캘린더 연동됨</span>
         </div>
         <div className="stat-card">
           <span className="stat-title">이번 달 총 교육시간</span>
-          <span className="stat-value">0<span style={{fontSize: '1rem'}}>시간</span></span>
-          <span className="stat-sub" style={{color: 'var(--text-muted)'}}>데이터 없음</span>
+          <span className="stat-value">{stats.totalDuration}<span style={{fontSize: '1rem'}}>시간</span></span>
         </div>
         <div className="stat-card">
-          <span className="stat-title">이번 달 총 강사료</span>
-          <span className="stat-value">0<span style={{fontSize: '1rem'}}>원</span></span>
-          <span className="stat-sub" style={{color: 'var(--text-muted)'}}>데이터 없음</span>
+          <span className="stat-title">이번 달 예상 강사료</span>
+          <span className="stat-value">{stats.totalFee.toLocaleString()}<span style={{fontSize: '1rem'}}>원</span></span>
         </div>
         <div className="stat-card">
           <span className="stat-title">미정산 금액</span>
           <span className="stat-value" style={{color: 'var(--warning)'}}>0<span style={{fontSize: '1rem'}}>원</span></span>
-          <span className="stat-sub">정산 필요 0건</span>
         </div>
       </div>
 
