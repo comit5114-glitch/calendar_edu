@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>교육 일정 관리</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Materialize CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <!-- Google Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <!-- FullCalendar CSS -->
+    <link href='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css' rel='stylesheet' />
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <!-- Top App Bar -->
+    <div class="navbar-fixed">
+      <nav class="app-bar z-depth-1">
+        <div class="nav-wrapper">
+          <a href="#" class="brand-logo center"><i class="material-icons left">event_note</i>교육 일정 관리</a>
+          <a href="#" data-target="mobile-demo" class="sidenav-trigger"><i class="material-icons">menu</i></a>
+        </div>
+      </nav>
+    </div>
+
+    <ul class="sidenav" id="mobile-demo">
+      <li><a href="#!"><i class="material-icons">settings</i>설정</a></li>
+      <li><a href="#!"><i class="material-icons">info</i>앱 정보</a></li>
+    </ul>
+
+    <!-- Main Content Area -->
+    <div class="content-area">
+      
+      <!-- TAB 1: HOME -->
+      <section id="tab-home" class="active-tab">
+        <div class="home-container center-align">
+          <div class="header-text">
+            <h5>음성으로 교육 일정 등록</h5>
+            <p class="grey-text text-darken-1">마이크 버튼을 누르고<br>교육 일정을 말해주세요.</p>
+          </div>
+          
+          <div class="mic-wrapper">
+            <a class="btn-floating btn-large waves-effect waves-light pulse-mic" id="mic-btn">
+              <i class="material-icons" style="font-size: 3rem;">mic</i>
+            </a>
+          </div>
+
+          <div class="example-card card">
+            <div class="card-content left-align">
+              <span class="card-title" style="font-size: 1.1rem; font-weight: 500;">예시</span>
+              <p class="grey-text text-darken-2">
+                "7월 18일 오후 2시부터 4시까지 연산4동 행정복지센터에서 스마트폰 기초교육 등록해줘"
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: SCHEDULE -->
+      <section id="tab-schedule">
+        <div class="schedule-container">
+          <div class="card calendar-card">
+            <div class="card-content">
+              <div id='calendar'></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: CALCULATE -->
+      <section id="tab-calc">
+        <div class="calc-container center-align">
+          <div style="margin-top: 40px; padding: 20px;">
+            <i class="material-icons large blue-text">calculate</i>
+            <h5 style="margin-top: 20px; font-weight: 500;">월별 강사료 계산</h5>
+            <p class="grey-text text-darken-1" style="margin-top: 20px;">
+              현재 보고 계신 캘린더의 일정을 바탕으로<br>Google Sheets에 강사료를 자동 기록합니다.
+            </p>
+            <button class="btn-large waves-effect waves-light blue darken-2" id="calc-btn" style="margin-top: 30px; border-radius: 8px; width: 100%;">
+              <i class="material-icons left">receipt_long</i>강사료 계산 및 기록
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Bottom Navigation Bar -->
+    <div class="bottom-nav z-depth-3">
+      <a href="#!" class="nav-item active" data-target="tab-home">
+        <i class="material-icons">home</i>
+        <span>홈</span>
+      </a>
+      <a href="#!" class="nav-item" data-target="tab-schedule">
+        <i class="material-icons">calendar_today</i>
+        <span>일정</span>
+      </a>
+      <a href="#!" class="nav-item" data-target="tab-calc">
+        <i class="material-icons">calculate</i>
+        <span>계산</span>
+      </a>
+    </div>
+
+    <!-- Voice Recording Overlay -->
+    <div id="voice-overlay" class="voice-overlay" style="display: none;">
+      <div class="voice-content center-align">
+        <div class="preloader-wrapper big active">
+          <div class="spinner-layer spinner-blue-only">
+            <div class="circle-clipper left"><div class="circle"></div></div>
+            <div class="gap-patch"><div class="circle"></div></div>
+            <div class="circle-clipper right"><div class="circle"></div></div>
+          </div>
+        </div>
+        <h5 class="white-text" id="voice-text">듣고 있습니다...</h5>
+      </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div id="confirm-modal" class="modal bottom-sheet or-card" style="max-height: 85%;">
+      <div class="modal-content" style="padding-bottom: 0;">
+        <h5 style="font-weight: 600; margin-bottom: 20px; color: #1976d2;"><i class="material-icons left">check_circle</i>인식된 일정 정보</h5>
+        <table class="striped confirm-table">
+          <tbody>
+            <tr><td class="td-label">교육일</td><td class="td-value" id="conf-date"></td></tr>
+            <tr><td class="td-label">시간</td><td class="td-value" id="conf-time"></td></tr>
+            <tr><td class="td-label">교육명</td><td class="td-value" id="conf-course"></td></tr>
+            <tr><td class="td-label">기관명</td><td class="td-value" id="conf-inst"></td></tr>
+            <tr><td class="td-label">장소</td><td class="td-value" id="conf-loc"></td></tr>
+            <tr id="conf-recur-row" style="display:none;"><td class="td-label" style="color:#d32f2f;">반복</td><td class="td-value" id="conf-recur" style="color:#d32f2f; font-weight:bold;"></td></tr>
+            <tr><td class="td-label">시간당</td><td class="td-value"><span id="conf-fee-hourly"></span>원</td></tr>
+            <tr><td class="td-label">총액</td><td class="td-value" style="font-weight:700; color:#1976d2;"><span id="conf-fee-total"></span>원</td></tr>
+          </tbody>
+        </table>
+        <p class="center-align" style="margin-top: 15px; color: #757575;">위 내용으로 등록하시겠습니까?</p>
+      </div>
+      <div class="modal-footer" style="padding: 10px 24px 20px;">
+        <div class="row" style="margin-bottom: 0;">
+          <div class="col s6" style="padding-right: 5px;">
+            <a href="#!" class="modal-close btn-flat grey lighten-3 full-width center-align" style="border-radius: 8px;">취소</a>
+          </div>
+          <div class="col s6" style="padding-left: 5px;">
+            <a href="#!" class="btn blue darken-2 full-width center-align" id="confirm-save-btn" style="border-radius: 8px;">등록하기</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Event Details Modal -->
+    <div id="event-modal" class="modal bottom-sheet" style="max-height: 80%;">
+      <div class="modal-content">
+        <h5 id="event-title" style="font-weight: 600; color: #1976d2;"></h5>
+        <div style="margin-top: 15px; line-height: 1.6; font-size: 1.05rem;">
+          <p id="event-desc" style="background: #f5f5f5; padding: 10px; border-radius: 8px;"></p>
+          <p><i class="material-icons tiny">schedule</i> <b>시작:</b> <span id="event-start"></span></p>
+          <p><i class="material-icons tiny">schedule</i> <b>종료:</b> <span id="event-end"></span></p>
+        </div>
+      </div>
+      <div class="modal-footer" style="padding: 10px 24px 20px;">
+        <div class="row" style="margin-bottom: 0;">
+          <div class="col s6" style="padding-right: 5px;">
+            <a href="#!" class="modal-close btn-flat grey lighten-3 full-width center-align" style="border-radius: 8px;">닫기</a>
+          </div>
+          <div class="col s6" style="padding-left: 5px;">
+            <a href="#!" class="btn red darken-1 full-width center-align" id="event-delete-btn" style="border-radius: 8px;">삭제하기</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js'></script>
+    <!-- Custom JS File -->
+    <script src="./app.js"></script>
+  </body>
+</html>
