@@ -50,12 +50,27 @@ export default function Home() {
         .then(res => res.json())
         .then(calendarRes => {
           if (calendarRes.success) {
-            // 시트에 기록 (임시 강사료 계산 로직 포함)
+            // 시트에 기록 (강사료 계산 로직)
+            const duration = parsedData.duration || 2;
+            const isDibe = parsedData.course?.includes('디베') || transcript.includes('디베');
+            
+            let hourlyRate = 30000;
+            let basePay = 0;
+            let totalFee = duration * hourlyRate;
+            
+            // '디베' 일정이면 기본급(12,100 * 0.5 = 6050원)을 2시간 단위(각각)로 추가
+            if (isDibe) {
+              const blocks = Math.ceil(duration / 2); // 2시간당 1블럭
+              basePay = 12100 * 0.5; // 6050원
+              totalFee = (duration * hourlyRate) + (blocks * basePay);
+            }
+
             const feeData = {
               ...parsedData,
-              duration: parsedData.duration || 2,
-              fee: 50000,
-              totalFee: (parsedData.duration || 2) * 50000
+              duration: duration,
+              fee: hourlyRate,
+              basePay: isDibe ? basePay : 0,
+              totalFee: totalFee
             };
             
             return fetch('/api/sheets', {

@@ -5,7 +5,7 @@ import { getGoogleAuth } from '@/utils/googleAuth';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { date, course, institution, start, end, duration, fee, totalFee } = body;
+    const { date, course, institution, start, end, duration, fee, basePay, totalFee } = body;
 
     const auth = getGoogleAuth();
     const sheets = google.sheets({ version: 'v4', auth });
@@ -18,19 +18,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'GOOGLE_SHEET_ID 환경변수가 없습니다.' }, { status: 400 });
     }
 
-    // 시트에 추가할 데이터 배열
+    // 시트에 추가할 데이터 배열 (기본급 포함)
     const values = [
-      [date, course, institution, start, end, duration, fee, totalFee]
+      [date, course, institution, start, end, `${duration}시간`, fee, basePay, totalFee]
     ];
 
     const resource = {
       values,
     };
 
-    // A열부터 H열까지 데이터 이어붙이기 (Append)
+    // A열부터 I열까지 데이터 이어붙이기 (Append)
     const response = await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: '시트1!A:H', // 실제 시트 이름에 맞게 수정 (기본값: 시트1)
+      range: '시트1!A:I', // 실제 시트 이름에 맞게 수정 (기본값: 시트1)
       valueInputOption: 'USER_ENTERED',
       requestBody: resource,
     });
