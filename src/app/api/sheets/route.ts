@@ -5,7 +5,7 @@ import { getGoogleAuth } from '@/utils/googleAuth';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { date, course, institution, start, end, duration, fee, basePay, totalFee } = body;
+    const { date, course, institution, start, end, duration, fee, basePay, formula, totalFee } = body;
 
     const auth = getGoogleAuth();
     const sheets = google.sheets({ version: 'v4', auth });
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
     // 시트에 추가할 데이터 배열 (기본급 포함)
     const values = [
-      [date, course, institution, start, end, `${duration}시간`, fee, basePay, totalFee]
+      [date, institution, course, start, end, `${duration}시간`, fee, basePay, formula || totalFee]
     ];
 
     const resource = {

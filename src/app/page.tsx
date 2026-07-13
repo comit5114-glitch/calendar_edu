@@ -55,16 +55,18 @@ export default function Home() {
         
         // 시트에만 기록 (강사료 계산 로직)
         const duration = parsedData.duration || 2;
-        const isDibe = parsedData.course?.includes('디베') || transcript.includes('디베');
+        const isDibe = parsedData.institution?.includes('디베') || transcript.includes('디베');
         
         let hourlyRate = 30000;
         let basePay = 0;
         let totalFee = duration * hourlyRate;
+        let formula = `=${duration}*30000`;
         
         if (isDibe) {
           const blocks = Math.ceil(duration / 2); // 2시간당 1블럭
           basePay = 12100 * 0.5; // 6050원
           totalFee = (duration * hourlyRate) + (blocks * basePay);
+          formula = `=(${duration}*30000)+(${blocks}*6050)`;
         }
 
         const feeData = {
@@ -75,7 +77,8 @@ export default function Home() {
           duration: duration,
           fee: hourlyRate,
           basePay: isDibe ? basePay : 0,
-          totalFee: totalFee
+          totalFee: totalFee,
+          formula: formula
         };
         
         fetch('/api/sheets', {

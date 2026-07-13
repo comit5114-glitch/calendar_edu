@@ -53,15 +53,17 @@ export default function SchedulePage() {
       setVoiceText('일정을 시트에 자동 기록하는 중...');
       
       const duration = parsedData.duration || 2;
-      const isDibe = parsedData.course?.includes('디베') || transcript.includes('디베');
+      const isDibe = parsedData.institution?.includes('디베') || transcript.includes('디베');
       let hourlyRate = 30000;
       let basePay = 0;
       let totalFee = duration * hourlyRate;
+      let formula = `=${duration}*30000`;
       
       if (isDibe) {
         const blocks = Math.ceil(duration / 2);
         basePay = 12100 * 0.5;
         totalFee = (duration * hourlyRate) + (blocks * basePay);
+        formula = `=(${duration}*30000)+(${blocks}*6050)`;
       }
 
       const feeData = {
@@ -69,7 +71,7 @@ export default function SchedulePage() {
         date: parsedData.date || new Date().toISOString().split('T')[0],
         start: parsedData.start || '09:00',
         end: parsedData.end || '11:00',
-        duration, fee: hourlyRate, basePay: isDibe ? basePay : 0, totalFee
+        duration, fee: hourlyRate, basePay: isDibe ? basePay : 0, totalFee, formula
       };
       
       fetch('/api/sheets', {
@@ -141,19 +143,21 @@ export default function SchedulePage() {
       return data;
     })
     .then(calendarRes => {
-      const isDibe = parsedData.course?.includes('디베') || parsedData.institution?.includes('디베');
+      const isDibe = parsedData.institution?.includes('디베');
       let hourlyRate = 30000;
       let basePay = 0;
       let totalFee = duration * hourlyRate;
+      let formula = `=${duration}*30000`;
       
       if (isDibe) {
         const blocks = Math.ceil(duration / 2);
         basePay = 12100 * 0.5;
         totalFee = (duration * hourlyRate) + (blocks * basePay);
+        formula = `=(${duration}*30000)+(${blocks}*6050)`;
       }
 
       const feeData = {
-        ...parsedData, duration, fee: hourlyRate, basePay: isDibe ? basePay : 0, totalFee
+        ...parsedData, duration, fee: hourlyRate, basePay: isDibe ? basePay : 0, totalFee, formula
       };
       
       return fetch('/api/sheets', {
@@ -180,6 +184,25 @@ export default function SchedulePage() {
       setVoiceText(`❌ 에러: ${err.message}`);
       alert(`에러 원인: ${err.message}`);
     });
+  };
+
+  const handleDeleteEvent = (id: string) => {
+    if (confirm('이 일정을 앱에서 삭제하시겠습니까?\n(※ 구글 시트에 전송된 기록은 수동으로 지워주셔야 합니다)')) {
+      deleteEventFromLocal(id);
+      setEvents(getLocalEvents());
+    }
+  };
+
+  const handleEditEvent = (event: ScheduleEvent) => {
+    setManualForm({
+      date: event.date,
+      start: event.start,
+      end: event.end,
+      course: event.course,
+      institution: event.institution
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setVoiceText('선택한 일정을 폼으로 불러왔습니다. 수정 후 다시 [구글캘린더로 보내줘]를 누르면 새 일정으로 추가됩니다. (기존 일정은 수동 삭제 필요)');
   };
 
   // 7월 달력 렌더링용 배열
@@ -264,9 +287,17 @@ export default function SchedulePage() {
         <div style={{marginTop: '20px'}}>
           <h4 style={{borderBottom: '1px solid #eee', paddingBottom: '10px'}}>내 일정 리스트 (최근 순)</h4>
           {events.slice().reverse().map(e => (
-            <div key={e.id} style={{padding: '10px', background: '#f5f5f5', borderRadius: '5px', marginTop: '10px', textAlign: 'left'}}>
-              <strong>{e.date} {e.start}</strong> - {e.course} ({e.institution})<br/>
-              <span style={{fontSize: '0.85rem', color: '#666'}}>강사료: {e.totalFee?.toLocaleString()}원</span>
+            <div key={e.id} style={{padding: '10px', background: '#f5f5f5', borderRadius: '5px', marginTop: '10px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '5px'}}>
+              <div>
+                <strong>{e.date} {e.start}</strong> - {e.course} ({e.institution})
+              </div>
+              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                <span style={{fontSize: '0.85rem', color: '#666'}}>강사료: {e.totalFee?.toLocaleString()}원</span>
+                <div>
+                  <button onClick={() => handleEditEvent(e)} style={{padding: '4px 8px', marginRight: '5px', border: '1px solid #ccc', borderRadius: '4px', background: 'white', cursor: 'pointer', fontSize: '0.8rem'}}>수정</button>
+                  <button onClick={() => handleDeleteEvent(e.id)} style={{padding: '4px 8px', border: 'none', borderRadius: '4px', background: '#ff4d4f', color: 'white', cursor: 'pointer', fontSize: '0.8rem'}}>삭제</button>
+                </div>
+              </div>
             </div>
           ))}
           {events.length === 0 && <p style={{fontSize: '0.9rem', color: '#999', marginTop: '10px'}}>저장된 일정이 없습니다.</p>}

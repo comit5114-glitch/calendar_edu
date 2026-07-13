@@ -24,6 +24,23 @@ export function getLocalEvents(): ScheduleEvent[] {
   return stored ? JSON.parse(stored) : [];
 }
 
+export function deleteEventFromLocal(id: string) {
+  if (typeof window === 'undefined') return;
+  const events = getLocalEvents();
+  const filtered = events.filter(e => e.id !== id);
+  localStorage.setItem('calendar_events', JSON.stringify(filtered));
+}
+
+export function updateEventInLocal(id: string, updatedEvent: Omit<ScheduleEvent, 'id'>) {
+  if (typeof window === 'undefined') return;
+  const events = getLocalEvents();
+  const index = events.findIndex(e => e.id === id);
+  if (index !== -1) {
+    events[index] = { ...updatedEvent, id };
+    localStorage.setItem('calendar_events', JSON.stringify(events));
+  }
+}
+
 export function getMonthlyStats(monthStr: string) { // format 'YYYY-MM'
   const events = getLocalEvents();
   const monthly = events.filter(e => e.date.startsWith(monthStr));
