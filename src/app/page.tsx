@@ -10,6 +10,7 @@ export default function Home() {
   
   const [stats, setStats] = useState({ count: 0, totalDuration: 0, totalFee: 0 });
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
+  const [searchResults, setSearchResults] = useState<ScheduleEvent[] | null>(null);
   const recognitionRef = useRef<any>(null);
   const transcriptRef = useRef<string>('');
 
@@ -21,78 +22,31 @@ export default function Home() {
   }, []);
 
   const processVoiceCommand = (transcript: string) => {
-      const parsedData = parseKoreanVoice(transcript);
-      console.log('분석 결과:', parsedData);
+      // 대시보드 마이크는 '검색' 전용으로 사용
+      let keyword = transcript.replace(/검색해줘|검색|찾아줘|보여줘|일정/g, '').trim();
+      if (!keyword) {
+         setVoiceText('검색어를 인식하지 못했습니다. 다시 말씀해주세요.');
+         return;
+      }
+
+      const allEvents = getLocalEvents();
+      const matchedEvents = allEvents.filter(e => 
+         e.institution.includes(keyword) || 
+         e.course.includes(keyword) || 
+         e.date.includes(keyword)
+      );
+
+      setSearchResults(matchedEvents);
       
-      if (parsedData.intent === 'SEARCH') {
-        const msg = `${parsedData.searchDate} 일정을 검색합니다.`;
-        const utterance = new SpeechSynthesisUtterance(msg);
-        utterance.lang = 'ko-KR';
-        window.speechSynthesis.speak(utterance);
-        alert(msg);
-      } else {
-        const duration = parsedData.duration || 2;
-        const isDibe = parsedData.institution?.includes('디베') || transcript.includes('디베');
-        
-        let hourlyRate: number | string = '';
-        let basePay: number | string = '';
-        let totalFee: number | string = '';
-        let formula = '';
-        let dibeSumFormula = '';
-        
-        if (isDibe) {
-          hourlyRate = 30000;
-          const blocks = Math.ceil(duration / 2);
-          basePay = 6050 * blocks;
-          totalFee = (duration * hourlyRate) + basePay;
-          formula = `=(${duration}*30000)+(${blocks}*6050)`;
-          
-          const rDate = new Date(parsedData.date || new Date().toISOString().split('T')[0]);
-          let sMonth = rDate.getMonth();
-          let sYear = rDate.getFullYear();
-          if (rDate.getDate() < 15) {
-            sMonth -= 1;
-            if (sMonth < 0) { sMonth = 11; sYear -= 1; }
-          }
-          const sDate = `${sYear}-${String(sMonth + 1).padStart(2, '0')}-15`;
-          let eMonth = sMonth + 1;
-          let eYear = sYear;
-          if (eMonth > 11) { eMonth = 0; eYear += 1; }
-          const eDate = `${eYear}-${String(eMonth + 1).padStart(2, '0')}-14`;
-          dibeSumFormula = `=SUMIFS(I:I, B:B, "*디베*", A:A, ">=${sDate}", A:A, "<=${eDate}")`;
-        } else if (parsedData.fee) {
-          hourlyRate = parsedData.fee;
-          basePay = 0;
-          totalFee = duration * Number(hourlyRate);
-          formula = `=${duration}*${hourlyRate}`;
-        }
+      const msg = `"${keyword}" 검색 결과, 총 ${matchedEvents.length}건이 있습니다.`;
+      setVoiceText(msg);
 
-        const feeData = {
-          ...parsedData,
-          date: parsedData.date || new Date().toISOString().split('T')[0],
-          start: parsedData.start || '09:00',
-          end: parsedData.end || '11:00',
-          duration: duration,
-          fee: hourlyRate,
-          basePay: isDibe ? basePay : 0,
-          totalFee: totalFee,
-          formula: formula,
-          dibeSumFormula: dibeSumFormula
-        };
-        
-        saveEventToLocal(feeData as any);
-        const now = new Date();
-        const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-        setStats(getMonthlyStats(monthStr));
-        setEvents(getLocalEvents());
-
-        setVoiceText('✅ 일정이 정상적으로 등록되었습니다!');
-
-        fetch('/api/sheets', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(feeData)
-        }).catch(e => console.log('시트 에러 무시', e));
+      try {
+         const utterance = new SpeechSynthesisUtterance(msg);
+         utterance.lang = 'ko-KR';
+         window.speechSynthesis.speak(utterance);
+      } catch (e) {
+         console.log(e);
       }
   };
 
@@ -212,14 +166,22 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Recent Events Section */}
+      {/* Recent Events / Search Results Section */}
       <div className="stat-card" style={{marginTop: '20px', marginBottom: '20px'}}>
-        <h3 style={{marginBottom: '15px', borderBottom: '1px solid #eee', paddingBottom: '10px'}}>최근 등록한 일정</h3>
-        {events.length === 0 ? (
-          <p style={{fontSize: '0.9rem', color: '#999', textAlign: 'center', padding: '20px 0'}}>등록된 일정이 없습니다.</p>
+        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #eee', paddingBottom: '10px', marginBottom: '15px'}}>
+           <h3 style={{margin: 0}}>{searchResults ? '검색 결과' : '최근 등록한 일정'}</h3>
+           {searchResults && (
+             <button onClick={() => setSearchResults(null)} style={{background: '#f0f0f0', border: 'none', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.85rem'}}>초기화</button>
+           )}
+        </div>
+        
+        {(searchResults || events).length === 0 ? (
+          <p style={{fontSize: '0.9rem', color: '#999', textAlign: 'center', padding: '20px 0'}}>
+            {searchResults ? '검색 결과가 없습니다.' : '등록된 일정이 없습니다.'}
+          </p>
         ) : (
           <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-            {events.slice(-5).reverse().map(e => (
+            {(searchResults || events.slice(-5).reverse()).map(e => (
               <div key={e.id} style={{padding: '12px', background: '#f5f5f5', borderRadius: '8px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '5px'}}>
                 <div style={{display: 'flex', justifyContent: 'space-between'}}>
                   <strong>{e.date} {e.start}~{e.end}</strong>

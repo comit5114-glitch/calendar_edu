@@ -12,6 +12,7 @@ export default function SchedulePage() {
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [selectedModalDate, setSelectedModalDate] = useState<string | null>(null);
+  const [isAddingNew, setIsAddingNew] = useState(false);
   const [listLimit, setListLimit] = useState(5);
   const recognitionRef = useRef<any>(null);
   const transcriptRef = useRef<string>('');
@@ -528,12 +529,12 @@ export default function SchedulePage() {
             width: '90%', maxWidth: '400px', maxHeight: '80vh', overflowY: 'auto'
           }}>
             <h3 style={{marginTop: 0, borderBottom: '1px solid #eee', paddingBottom: '10px', display: 'flex', justifyContent: 'space-between'}}>
-              {editId ? '일정 수정' : `${selectedModalDate} 일정`}
-              <button onClick={() => { setSelectedModalDate(null); setEditId(null); }} style={{background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer'}}>✖</button>
+              {editId ? '일정 수정' : (isAddingNew ? '새 일정 추가' : `${selectedModalDate} 일정`)}
+              <button onClick={() => { setSelectedModalDate(null); setEditId(null); setIsAddingNew(false); }} style={{background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer'}}>✖</button>
             </h3>
             
-            {editId ? (
-              <form onSubmit={(e) => { handleManualSubmit(e); setSelectedModalDate(null); }} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+            {editId || isAddingNew ? (
+              <form onSubmit={(e) => { handleManualSubmit(e); setSelectedModalDate(null); setIsAddingNew(false); }} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
                 <div style={{display: 'flex', gap: '10px'}}>
                   <input type="time" value={manualForm.start} onChange={e => setManualForm({...manualForm, start: e.target.value})} style={{flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
                   <span style={{lineHeight: '40px'}}>~</span>
@@ -544,9 +545,9 @@ export default function SchedulePage() {
                 <input type="number" placeholder="시간당 강사료" value={manualForm.fee} onChange={e => setManualForm({...manualForm, fee: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
                 
                 <button type="submit" className="btn-primary" style={{width: '100%', padding: '10px', marginTop: '10px', fontWeight: 'bold', border: 'none', borderRadius: '5px', background: 'var(--primary)', color: 'white', cursor: 'pointer'}}>
-                  💾 저장
+                  {editId ? '💾 수정 저장' : '📅 일정 등록 저장'}
                 </button>
-                <button type="button" onClick={() => setEditId(null)} className="btn-secondary" style={{width: '100%', padding: '10px', background: '#ccc', color: '#333', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>
+                <button type="button" onClick={() => { setEditId(null); setIsAddingNew(false); }} className="btn-secondary" style={{width: '100%', padding: '10px', background: '#ccc', color: '#333', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>
                   취소
                 </button>
               </form>
@@ -573,6 +574,7 @@ export default function SchedulePage() {
 
                 <button onClick={() => {
                   setEditId(null);
+                  setIsAddingNew(true);
                   setManualForm({
                     ...manualForm,
                     date: selectedModalDate,
@@ -583,8 +585,6 @@ export default function SchedulePage() {
                     repeat: '없음',
                     notification: '없음'
                   });
-                  setSelectedModalDate(null);
-                  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
                 }} style={{width: '100%', padding: '12px', background: 'white', border: '1px solid var(--primary)', color: 'var(--primary)', borderRadius: '5px', marginTop: '10px', fontWeight: 'bold', cursor: 'pointer'}}>
                   + 새 일정 추가하기
                 </button>
