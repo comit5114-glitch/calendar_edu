@@ -78,6 +78,7 @@ export default function SchedulePage() {
   // 수동 입력 폼 상태
   const [manualForm, setManualForm] = useState({
     date: new Date().toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0],
     start: '14:00',
     end: '16:00',
     institution: '',
@@ -164,6 +165,7 @@ export default function SchedulePage() {
 
     const parsedData = {
       date: manualForm.date,
+      endDate: manualForm.endDate || manualForm.date,
       start: manualForm.start,
       end: manualForm.end,
       duration: duration,
@@ -250,6 +252,7 @@ export default function SchedulePage() {
     setEditId(event.id);
     setManualForm({
       date: event.date,
+      endDate: event.endDate || event.date,
       start: event.start,
       end: event.end,
       institution: event.institution,
@@ -278,6 +281,22 @@ export default function SchedulePage() {
       alert('구글 캘린더 전송 중 에러가 발생했습니다.');
       console.error(error);
     }
+  };
+
+  const handleDateClick = (dateStr: string) => {
+    setEditId(null);
+    setManualForm({
+      ...manualForm,
+      date: dateStr,
+      endDate: dateStr,
+      course: '',
+      institution: '',
+      fee: '',
+      repeat: '없음',
+      notification: '없음'
+    });
+    setVoiceText(`${dateStr} 날짜가 선택되었습니다. 하단 폼에서 일정을 입력해주세요.`);
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
   };
 
   const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date());
@@ -348,17 +367,23 @@ export default function SchedulePage() {
           {emptyDays.map(i => <div key={`empty-${i}`} />)}
           {days.map(day => {
             const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-            const hasEvent = events.some(e => e.date === dateStr);
+            const hasEvent = events.some(e => {
+              if (e.endDate && e.endDate !== e.date) {
+                return dateStr >= e.date && dateStr <= e.endDate;
+              }
+              return e.date === dateStr;
+            });
             const isToday = calYear === new Date().getFullYear() && calMonth === new Date().getMonth() && day === new Date().getDate();
 
             return (
-              <div key={day} style={{
+              <div key={day} onClick={() => handleDateClick(dateStr)} style={{
                 padding: '10px 0', 
                 borderRadius: '5px', 
                 background: isToday ? 'var(--primary)' : '#f9f9f9',
                 color: isToday ? 'white' : 'black',
                 position: 'relative',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                transition: 'background 0.2s'
               }}>
                 {day}
                 {hasEvent && (
@@ -377,7 +402,7 @@ export default function SchedulePage() {
           {events.slice().reverse().map(e => (
             <div key={e.id} style={{padding: '12px', background: '#f5f5f5', borderRadius: '8px', marginTop: '10px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '5px'}}>
               <div>
-                <strong>{e.date} {e.start}~{e.end}</strong>
+                <strong>{e.date}{e.endDate && e.endDate !== e.date ? ` ~ ${e.endDate}` : ''} {e.start}~{e.end}</strong>
               </div>
               <div style={{color: '#444'}}>
                 기관명: {e.institution} | 과정명: {e.course}
@@ -404,8 +429,12 @@ export default function SchedulePage() {
       <div className="stat-card" style={{marginBottom: '20px'}}>
         <h3 style={{marginBottom: '15px'}}>{editId ? '일정 수정' : '수동으로 일정 등록'}</h3>
         <form onSubmit={handleManualSubmit} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-          {/* 1. 날짜 */}
-          <input type="date" value={manualForm.date} onChange={e => setManualForm({...manualForm, date: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+          {/* 1. 날짜 (시작~종료) */}
+          <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
+            <input type="date" value={manualForm.date} onChange={e => setManualForm({...manualForm, date: e.target.value})} style={{flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+            <span style={{fontWeight: 'bold', color: '#666'}}>~</span>
+            <input type="date" value={manualForm.endDate} onChange={e => setManualForm({...manualForm, endDate: e.target.value})} style={{flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+          </div>
           
           {/* 2. 시간 */}
           <div style={{display: 'flex', gap: '10px'}}>

@@ -1,6 +1,7 @@
 export interface ScheduleEvent {
   id: string;
   date: string;
+  endDate?: string;
   start: string;
   end: string;
   duration: number;
