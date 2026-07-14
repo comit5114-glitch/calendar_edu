@@ -12,56 +12,13 @@ export default function SchedulePage() {
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
+  const transcriptRef = useRef<string>('');
 
   useEffect(() => {
     setEvents(getLocalEvents());
   }, []);
 
-  // 수동 입력 폼 상태
-  const [manualForm, setManualForm] = useState({
-    date: new Date().toISOString().split('T')[0],
-    start: '14:00',
-    end: '16:00',
-    institution: '',
-    course: '',
-    repeat: '없음',
-    notification: '없음'
-  });
-
-  const handleMicClick = () => {
-    if (isRecording) {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-      setIsRecording(false);
-      setVoiceText('음성 인식을 중지했습니다.');
-      return;
-    }
-
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      alert('음성 인식을 지원하지 않는 브라우저입니다. 스마트폰의 Chrome 브라우저를 이용해주세요.');
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'ko-KR';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    recognition.continuous = true;
-    recognitionRef.current = recognition;
-
-    recognition.onstart = () => {
-      setIsRecording(true);
-      setVoiceText('듣고 있습니다... 마이크를 다시 누르면 정지됩니다.');
-    };
-
-    recognition.onresult = (event: any) => {
-      const lastIndex = event.results.length - 1;
-      const transcript = event.results[lastIndex][0].transcript;
-      setVoiceText(`인식됨: "${transcript}"`);
-      
+  const processVoiceCommand = (transcript: string) => {
       const parsedData = parseKoreanVoice(transcript);
       
       const duration = parsedData.duration || 2;
@@ -109,13 +66,68 @@ export default function SchedulePage() {
       
       saveEventToLocal(feeData as any);
       setEvents(getLocalEvents());
-      setVoiceText('✅ 일정이 저장되었습니다! (마이크를 다시 눌러 정지할 수 있습니다)');
+      setVoiceText('✅ 일정이 정상적으로 등록되었습니다!');
       
       fetch('/api/sheets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(feeData)
       }).catch(e => console.log('시트 API 에러 무시', e));
+  };
+
+  // 수동 입력 폼 상태
+  const [manualForm, setManualForm] = useState({
+    date: new Date().toISOString().split('T')[0],
+    start: '14:00',
+    end: '16:00',
+    institution: '',
+    course: '',
+    repeat: '없음',
+    notification: '없음',
+    fee: ''
+  });
+
+  const handleMicClick = () => {
+    if (isRecording) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsRecording(false);
+      if (transcriptRef.current.trim().length > 0) {
+        processVoiceCommand(transcriptRef.current);
+      } else {
+        setVoiceText('음성 인식을 중지했습니다.');
+      }
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert('음성 인식을 지원하지 않는 브라우저입니다. 스마트폰의 Chrome 브라우저를 이용해주세요.');
+      return;
+    }
+
+    transcriptRef.current = '';
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'ko-KR';
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    recognition.continuous = true;
+    recognitionRef.current = recognition;
+
+    recognition.onstart = () => {
+      setIsRecording(true);
+      setVoiceText('듣고 있습니다... 말씀을 모두 마치신 후 마이크를 한 번 더 눌러주세요.');
+    };
+
+    recognition.onresult = (event: any) => {
+      let currentTranscript = '';
+      for (let i = 0; i < event.results.length; i++) {
+        currentTranscript += event.results[i][0].transcript + ' ';
+      }
+      transcriptRef.current = currentTranscript.trim();
+      setVoiceText(`"${transcriptRef.current}"\n(완료 시 마이크를 다시 눌러주세요)`);
     };
 
     recognition.onerror = (event: any) => {
@@ -126,7 +138,14 @@ export default function SchedulePage() {
     };
     
     recognition.onend = () => {
-        setIsRecording(false);
+      if (isRecording) {
+         setIsRecording(false);
+         if (transcriptRef.current.trim().length > 0) {
+            processVoiceCommand(transcriptRef.current);
+         } else {
+            setVoiceText('음성 인식이 종료되었습니다.');
+         }
+      }
     };
 
     recognition.start();
@@ -156,7 +175,8 @@ export default function SchedulePage() {
     };
 
     const isDibe = parsedData.institution?.includes('디베');
-    let hourlyRate: number | string = '';
+    const feeInput = manualForm.fee ? Number(manualForm.fee) : '';
+    let hourlyRate: number | string = feeInput;
     let basePay: number | string = '';
     let totalFee: number | string = '';
     let formula = '';
@@ -182,6 +202,10 @@ export default function SchedulePage() {
       if (eMonth > 11) { eMonth = 0; eYear += 1; }
       const eDate = `${eYear}-${String(eMonth + 1).padStart(2, '0')}-14`;
       dibeSumFormula = `=SUMIFS(I:I, B:B, "*디베*", A:A, ">=${sDate}", A:A, "<=${eDate}")`;
+    } else if (feeInput !== '') {
+      basePay = 0;
+      totalFee = duration * (feeInput as number);
+      formula = `=${duration}*${feeInput}`;
     }
 
     const feeData = {
@@ -200,7 +224,7 @@ export default function SchedulePage() {
     }
     
     setEvents(getLocalEvents());
-    setManualForm({...manualForm, course: '', institution: '', repeat: '없음', notification: '없음'});
+    setManualForm({...manualForm, course: '', institution: '', repeat: '없음', notification: '없음', fee: ''});
 
     fetch('/api/calendar', {
       method: 'POST',
@@ -231,7 +255,8 @@ export default function SchedulePage() {
       institution: event.institution,
       course: event.course,
       repeat: event.repeat || '없음',
-      notification: event.notification || '없음'
+      notification: event.notification || '없음',
+      fee: event.fee === '' ? '' : String(event.fee)
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setVoiceText('선택한 일정을 폼으로 불러왔습니다. 수정 후 저장 버튼을 누르면 업데이트됩니다.');
@@ -315,12 +340,20 @@ export default function SchedulePage() {
         <div style={{marginTop: '20px'}}>
           <h4 style={{borderBottom: '1px solid #eee', paddingBottom: '10px'}}>내 일정 리스트 (최근 순)</h4>
           {events.slice().reverse().map(e => (
-            <div key={e.id} style={{padding: '10px', background: '#f5f5f5', borderRadius: '5px', marginTop: '10px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '5px'}}>
+            <div key={e.id} style={{padding: '12px', background: '#f5f5f5', borderRadius: '8px', marginTop: '10px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '5px'}}>
               <div>
-                <strong>{e.date} {e.start}</strong> - {e.course} ({e.institution})
+                <strong>{e.date} {e.start}~{e.end}</strong>
               </div>
-              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                <span style={{fontSize: '0.85rem', color: '#666'}}>강사료: {e.totalFee?.toLocaleString()}원</span>
+              <div style={{color: '#444'}}>
+                기관명: {e.institution} | 과정명: {e.course}
+              </div>
+              <div style={{fontSize: '0.85rem', color: '#666'}}>
+                반복일정: {e.repeat || '없음'} | 알림: {e.notification || '없음'}
+              </div>
+              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '5px'}}>
+                <span style={{fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--primary)'}}>
+                  강사료: {e.totalFee === '' ? '미정' : `${Number(e.totalFee).toLocaleString()}원`}
+                </span>
                 <div>
                   <button onClick={() => handleEditEvent(e)} style={{padding: '4px 8px', marginRight: '5px', border: '1px solid #ccc', borderRadius: '4px', background: 'white', cursor: 'pointer', fontSize: '0.8rem'}}>수정</button>
                   <button onClick={() => handleDeleteEvent(e.id)} style={{padding: '4px 8px', border: 'none', borderRadius: '4px', background: '#ff4d4f', color: 'white', cursor: 'pointer', fontSize: '0.8rem'}}>삭제</button>
@@ -367,11 +400,14 @@ export default function SchedulePage() {
             <option value="1일전">1일 전</option>
           </select>
 
+          {/* 7. 강사료 (시간당) */}
+          <input type="number" placeholder="시간당 강사료 (예: 30000) - 미입력 시 공백" value={manualForm.fee} onChange={e => setManualForm({...manualForm, fee: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+
           <button type="submit" className="btn-primary" style={{width: '100%', padding: '15px', marginTop: '10px', fontSize: '1rem', fontWeight: 'bold'}}>
             {editId ? '💾 일정 수정 저장' : '📅 일정 등록 저장'}
           </button>
           {editId && (
-            <button type="button" onClick={() => { setEditId(null); setManualForm({...manualForm, course: '', institution: '', repeat: '없음', notification: '없음'}); }} className="btn-secondary" style={{width: '100%', padding: '15px', fontSize: '1rem', background: '#ccc', color: '#333', border: 'none', borderRadius: '5px', marginTop: '5px'}}>
+            <button type="button" onClick={() => { setEditId(null); setManualForm({...manualForm, course: '', institution: '', repeat: '없음', notification: '없음', fee: ''}); }} className="btn-secondary" style={{width: '100%', padding: '15px', fontSize: '1rem', background: '#ccc', color: '#333', border: 'none', borderRadius: '5px', marginTop: '5px'}}>
               취소
             </button>
           )}
