@@ -11,6 +11,7 @@ export default function SchedulePage() {
   
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
+  const [selectedModalDate, setSelectedModalDate] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
   const transcriptRef = useRef<string>('');
 
@@ -167,11 +168,25 @@ export default function SchedulePage() {
     const endDateObj = new Date(manualForm.endDate || manualForm.date);
     
     const datesToRegister = [];
-    for (let d = new Date(startDate); d <= endDateObj; d.setDate(d.getDate() + 1)) {
-       if (manualForm.repeat === '매일(월-금)' && (d.getDay() === 0 || d.getDay() === 6)) {
-           continue;
-       }
-       datesToRegister.push(new Date(d));
+    let currentD = new Date(startDate);
+    
+    while (currentD <= endDateObj) {
+      if (manualForm.repeat === '매일(월-금)') {
+        if (currentD.getDay() !== 0 && currentD.getDay() !== 6) {
+          datesToRegister.push(new Date(currentD));
+        }
+        currentD.setDate(currentD.getDate() + 1);
+      } else if (manualForm.repeat === '매주') {
+        datesToRegister.push(new Date(currentD));
+        currentD.setDate(currentD.getDate() + 7);
+      } else if (manualForm.repeat === '매월') {
+        datesToRegister.push(new Date(currentD));
+        currentD.setMonth(currentD.getMonth() + 1);
+      } else {
+        // 반복 없음 등
+        datesToRegister.push(new Date(currentD));
+        currentD.setDate(currentD.getDate() + 1);
+      }
     }
 
     if (datesToRegister.length === 0) {
@@ -309,19 +324,7 @@ export default function SchedulePage() {
   };
 
   const handleDateClick = (dateStr: string) => {
-    setEditId(null);
-    setManualForm({
-      ...manualForm,
-      date: dateStr,
-      endDate: dateStr,
-      course: '',
-      institution: '',
-      fee: '',
-      repeat: '없음',
-      notification: '없음'
-    });
-    setVoiceText(`${dateStr} 날짜가 선택되었습니다. 하단 폼에서 일정을 입력해주세요.`);
-    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    setSelectedModalDate(dateStr);
   };
 
   const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date());
@@ -504,6 +507,63 @@ export default function SchedulePage() {
           )}
         </form>
       </div>
+
+      {/* 팝업 모달 */}
+      {selectedModalDate && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
+          background: 'rgba(0,0,0,0.5)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div style={{
+            background: 'white', padding: '20px', borderRadius: '10px', 
+            width: '90%', maxWidth: '400px', maxHeight: '80vh', overflowY: 'auto'
+          }}>
+            <h3 style={{marginTop: 0, borderBottom: '1px solid #eee', paddingBottom: '10px', display: 'flex', justifyContent: 'space-between'}}>
+              {selectedModalDate} 일정
+              <button onClick={() => setSelectedModalDate(null)} style={{background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer'}}>✖</button>
+            </h3>
+            
+            {events.filter(e => e.date === selectedModalDate).map(e => (
+              <div key={e.id} style={{padding: '10px', background: '#f5f5f5', borderRadius: '5px', marginBottom: '10px'}}>
+                <div style={{fontWeight: 'bold'}}>{e.start}~{e.end}</div>
+                <div style={{color: '#444'}}>{e.institution} | {e.course}</div>
+                <div style={{display: 'flex', gap: '5px', marginTop: '10px'}}>
+                  <button onClick={() => {
+                    handleEditEvent(e);
+                    setSelectedModalDate(null);
+                  }} style={{flex: 1, padding: '8px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'}}>수정</button>
+                  <button onClick={() => {
+                    handleDeleteEvent(e.id);
+                  }} style={{flex: 1, padding: '8px', background: '#ff4d4f', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'}}>삭제</button>
+                </div>
+              </div>
+            ))}
+            
+            {events.filter(e => e.date === selectedModalDate).length === 0 && (
+              <p style={{color: '#999', textAlign: 'center', padding: '20px 0'}}>등록된 일정이 없습니다.</p>
+            )}
+
+            <button onClick={() => {
+              setEditId(null);
+              setManualForm({
+                ...manualForm,
+                date: selectedModalDate,
+                endDate: selectedModalDate,
+                course: '',
+                institution: '',
+                fee: '',
+                repeat: '없음',
+                notification: '없음'
+              });
+              setSelectedModalDate(null);
+              window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+            }} style={{width: '100%', padding: '12px', background: 'white', border: '1px solid var(--primary)', color: 'var(--primary)', borderRadius: '5px', marginTop: '10px', fontWeight: 'bold', cursor: 'pointer'}}>
+              + 새 일정 추가하기
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );
