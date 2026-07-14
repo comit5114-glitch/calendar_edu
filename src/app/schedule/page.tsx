@@ -280,8 +280,21 @@ export default function SchedulePage() {
     }
   };
 
-  // 7월 달력 렌더링용 배열
-  const daysInMonth = Array.from({length: 31}, (_, i) => i + 1);
+  const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date());
+  
+  const handlePrevMonth = () => {
+    setCurrentCalendarDate(new Date(currentCalendarDate.getFullYear(), currentCalendarDate.getMonth() - 1, 1));
+  };
+  const handleNextMonth = () => {
+    setCurrentCalendarDate(new Date(currentCalendarDate.getFullYear(), currentCalendarDate.getMonth() + 1, 1));
+  };
+
+  const calYear = currentCalendarDate.getFullYear();
+  const calMonth = currentCalendarDate.getMonth();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const emptyDays = Array.from({ length: firstDay }, (_, i) => i);
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
   return (
     <div>
@@ -291,7 +304,11 @@ export default function SchedulePage() {
 
       <div className="stat-card" style={{marginBottom: '20px'}}>
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px'}}>
-          <h3 style={{margin: 0}}>이번 달 일정 달력</h3>
+          <div style={{display: 'flex', alignItems: 'center', gap: '15px'}}>
+            <button onClick={handlePrevMonth} style={{background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', padding: '5px'}}>◀</button>
+            <h3 style={{margin: 0}}>{calYear}년 {calMonth + 1}월 일정</h3>
+            <button onClick={handleNextMonth} style={{background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', padding: '5px'}}>▶</button>
+          </div>
           <button 
             onClick={handleMicClick} 
             className={`mic-btn-small ${isRecording ? 'recording' : ''}`}
@@ -328,11 +345,11 @@ export default function SchedulePage() {
           {['일', '월', '화', '수', '목', '금', '토'].map(day => (
             <div key={day} style={{fontWeight: 'bold', color: 'var(--text-muted)'}}>{day}</div>
           ))}
-          <div/><div/><div/>
-          {daysInMonth.map(day => {
-            const dateStr = `2026-07-${String(day).padStart(2, '0')}`;
+          {emptyDays.map(i => <div key={`empty-${i}`} />)}
+          {days.map(day => {
+            const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const hasEvent = events.some(e => e.date === dateStr);
-            const isToday = day === new Date().getDate();
+            const isToday = calYear === new Date().getFullYear() && calMonth === new Date().getMonth() && day === new Date().getDate();
 
             return (
               <div key={day} style={{
@@ -406,6 +423,7 @@ export default function SchedulePage() {
           {/* 5. 반복설정 */}
           <select value={manualForm.repeat} onChange={e => setManualForm({...manualForm, repeat: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc', background: 'white'}}>
             <option value="없음">반복 없음</option>
+            <option value="매일(월-금)">매일(월-금)</option>
             <option value="매주">매주 반복</option>
             <option value="매월">매월 반복</option>
           </select>
