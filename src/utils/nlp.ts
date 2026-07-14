@@ -11,6 +11,7 @@ export interface ParseResult {
   duration?: number;
   isRecurring?: boolean;
   searchDate?: string;
+  fee?: number | string;
 }
 
 /**

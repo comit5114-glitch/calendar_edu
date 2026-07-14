@@ -262,6 +262,24 @@ export default function SchedulePage() {
     setVoiceText('선택한 일정을 폼으로 불러왔습니다. 수정 후 저장 버튼을 누르면 업데이트됩니다.');
   };
 
+  const handleSyncCalendar = async (event: ScheduleEvent) => {
+    try {
+      const response = await fetch('/api/calendar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(event)
+      });
+      if (response.ok) {
+        alert('구글 캘린더에 성공적으로 전송되었습니다!');
+      } else {
+        alert('구글 캘린더 전송 중 오류가 발생했습니다.');
+      }
+    } catch (error) {
+      alert('구글 캘린더 전송 중 에러가 발생했습니다.');
+      console.error(error);
+    }
+  };
+
   // 7월 달력 렌더링용 배열
   const daysInMonth = Array.from({length: 31}, (_, i) => i + 1);
 
@@ -355,6 +373,7 @@ export default function SchedulePage() {
                   강사료: {e.totalFee === '' ? '미정' : `${Number(e.totalFee).toLocaleString()}원`}
                 </span>
                 <div>
+                  <button onClick={() => handleSyncCalendar(e)} style={{padding: '4px 8px', marginRight: '5px', border: 'none', borderRadius: '4px', background: '#4285F4', color: 'white', cursor: 'pointer', fontSize: '0.8rem'}}>캘린더 전송</button>
                   <button onClick={() => handleEditEvent(e)} style={{padding: '4px 8px', marginRight: '5px', border: '1px solid #ccc', borderRadius: '4px', background: 'white', cursor: 'pointer', fontSize: '0.8rem'}}>수정</button>
                   <button onClick={() => handleDeleteEvent(e.id)} style={{padding: '4px 8px', border: 'none', borderRadius: '4px', background: '#ff4d4f', color: 'white', cursor: 'pointer', fontSize: '0.8rem'}}>삭제</button>
                 </div>

@@ -71,7 +71,7 @@ export default function CalcPage() {
         ) : (
           <div style={{display: 'flex', flexDirection: 'column', gap: '15px'}}>
             {events.slice().reverse().map(e => {
-              const isDibe = e.basePay > 0;
+              const isDibe = Number(e.basePay) > 0;
               return (
                 <div key={e.id} style={{background: '#f9f9f9', padding: '15px', borderRadius: '8px', borderLeft: isDibe ? '4px solid #ff9800' : '4px solid #ccc'}}>
                   <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '8px'}}>
