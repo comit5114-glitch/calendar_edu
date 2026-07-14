@@ -163,82 +163,107 @@ export default function SchedulePage() {
     const endH = parseInt(manualForm.end.split(':')[0]);
     const duration = Math.max(1, endH - startH);
 
-    const parsedData = {
-      date: manualForm.date,
-      endDate: manualForm.endDate || manualForm.date,
-      start: manualForm.start,
-      end: manualForm.end,
-      duration: duration,
-      institution: manualForm.institution,
-      course: manualForm.course,
-      location: manualForm.institution,
-      repeat: manualForm.repeat,
-      notification: manualForm.notification
-    };
-
-    const isDibe = parsedData.institution?.includes('디베');
-    const feeInput = manualForm.fee ? Number(manualForm.fee) : '';
-    let hourlyRate: number | string = feeInput;
-    let basePay: number | string = '';
-    let totalFee: number | string = '';
-    let formula = '';
-    let dibeSumFormula = '';
+    const startDate = new Date(manualForm.date);
+    const endDateObj = new Date(manualForm.endDate || manualForm.date);
     
-    if (isDibe) {
-      hourlyRate = 30000;
-      const blocks = Math.ceil(duration / 2);
-      basePay = 6050 * blocks;
-      totalFee = (duration * hourlyRate) + basePay;
-      formula = `=(${duration}*30000)+(${blocks}*6050)`;
-
-      const rDate = new Date(parsedData.date);
-      let sMonth = rDate.getMonth();
-      let sYear = rDate.getFullYear();
-      if (rDate.getDate() < 15) {
-        sMonth -= 1;
-        if (sMonth < 0) { sMonth = 11; sYear -= 1; }
-      }
-      const sDate = `${sYear}-${String(sMonth + 1).padStart(2, '0')}-15`;
-      let eMonth = sMonth + 1;
-      let eYear = sYear;
-      if (eMonth > 11) { eMonth = 0; eYear += 1; }
-      const eDate = `${eYear}-${String(eMonth + 1).padStart(2, '0')}-14`;
-      dibeSumFormula = `=SUMIFS(I:I, B:B, "*디베*", A:A, ">=${sDate}", A:A, "<=${eDate}")`;
-    } else if (feeInput !== '') {
-      basePay = 0;
-      totalFee = duration * (feeInput as number);
-      formula = `=${duration}*${feeInput}`;
+    const datesToRegister = [];
+    for (let d = new Date(startDate); d <= endDateObj; d.setDate(d.getDate() + 1)) {
+       if (manualForm.repeat === '매일(월-금)' && (d.getDay() === 0 || d.getDay() === 6)) {
+           continue;
+       }
+       datesToRegister.push(new Date(d));
     }
 
-    const feeData = {
-      ...parsedData, duration, fee: hourlyRate, basePay: isDibe ? basePay : 0, totalFee, formula, dibeSumFormula
-    };
+    if (datesToRegister.length === 0) {
+      alert('등록할 유효한 날짜가 없습니다.');
+      return;
+    }
 
     if (editId) {
-      updateEventInLocal(editId, feeData as any);
+      deleteEventFromLocal(editId);
+    }
+
+    for (const d of datesToRegister) {
+      // YYYY-MM-DD 형식으로 변환 (로컬 타임존 기준)
+      const dateStr = new Date(d.getTime() - (d.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+      
+      const parsedData = {
+        date: dateStr,
+        endDate: dateStr, // 개별 일별 일정으로 등록
+        start: manualForm.start,
+        end: manualForm.end,
+        duration: duration,
+        institution: manualForm.institution,
+        course: manualForm.course,
+        location: manualForm.institution,
+        repeat: manualForm.repeat,
+        notification: manualForm.notification
+      };
+
+      const isDibe = parsedData.institution?.includes('디베');
+      const feeInput = manualForm.fee ? Number(manualForm.fee) : '';
+      let hourlyRate: number | string = feeInput;
+      let basePay: number | string = '';
+      let totalFee: number | string = '';
+      let formula = '';
+      let dibeSumFormula = '';
+      
+      if (isDibe) {
+        hourlyRate = 30000;
+        const blocks = Math.ceil(duration / 2);
+        basePay = 6050 * blocks;
+        totalFee = (duration * hourlyRate) + basePay;
+        formula = `=(${duration}*30000)+(${blocks}*6050)`;
+
+        const rDate = new Date(parsedData.date);
+        let sMonth = rDate.getMonth();
+        let sYear = rDate.getFullYear();
+        if (rDate.getDate() < 15) {
+          sMonth -= 1;
+          if (sMonth < 0) { sMonth = 11; sYear -= 1; }
+        }
+        const sDate = `${sYear}-${String(sMonth + 1).padStart(2, '0')}-15`;
+        let eMonth = sMonth + 1;
+        let eYear = sYear;
+        if (eMonth > 11) { eMonth = 0; eYear += 1; }
+        const eDate = `${eYear}-${String(eMonth + 1).padStart(2, '0')}-14`;
+        dibeSumFormula = `=SUMIFS(I:I, B:B, "*디베*", A:A, ">=${sDate}", A:A, "<=${eDate}")`;
+      } else if (feeInput !== '') {
+        basePay = 0;
+        totalFee = duration * (feeInput as number);
+        formula = `=${duration}*${feeInput}`;
+      }
+
+      const feeData = {
+        ...parsedData, duration, fee: hourlyRate, basePay: isDibe ? basePay : 0, totalFee, formula, dibeSumFormula
+      };
+
+      saveEventToLocal(feeData as any);
+
+      fetch('/api/calendar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsedData)
+      }).catch(e => console.log('캘린더 에러 무시', e));
+
+      fetch('/api/sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(feeData)
+      }).catch(e => console.log('시트 에러 무시', e));
+    }
+
+    if (editId) {
       setEditId(null);
       setVoiceText('✅ 일정 수정 완료!');
       alert('일정이 성공적으로 수정되었습니다.');
     } else {
-      saveEventToLocal(feeData as any);
-      setVoiceText('✅ 수동 일정 등록 완료!');
-      alert('일정이 성공적으로 등록되었습니다.');
+      setVoiceText(`✅ 총 ${datesToRegister.length}건의 일정 등록 완료!`);
+      alert(`일정 ${datesToRegister.length}건이 성공적으로 등록되었습니다.`);
     }
     
     setEvents(getLocalEvents());
     setManualForm({...manualForm, course: '', institution: '', repeat: '없음', notification: '없음', fee: ''});
-
-    fetch('/api/calendar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(parsedData)
-    }).catch(e => console.log('캘린더 에러 무시', e));
-
-    fetch('/api/sheets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(feeData)
-    }).catch(e => console.log('시트 에러 무시', e));
   };
 
   const handleDeleteEvent = (id: string) => {
