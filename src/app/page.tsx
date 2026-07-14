@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { parseKoreanVoice } from '@/utils/nlp';
 import { getMonthlyStats, saveEventToLocal } from '@/utils/storage';
 
@@ -9,6 +9,7 @@ export default function Home() {
   const [voiceText, setVoiceText] = useState('마이크 버튼을 누르고 교육 일정을 말해주세요.');
   
   const [stats, setStats] = useState({ count: 0, totalDuration: 0, totalFee: 0 });
+  const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
     // 현재 달(예: '2026-07') 기준으로 통계 불러오기
@@ -18,6 +19,15 @@ export default function Home() {
   }, []);
 
   const handleMicClick = () => {
+    if (isRecording) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsRecording(false);
+      setVoiceText('음성 인식을 중지했습니다.');
+      return;
+    }
+
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     
     if (!SpeechRecognition) {
@@ -28,18 +38,19 @@ export default function Home() {
     const recognition = new SpeechRecognition();
     recognition.lang = 'ko-KR';
     recognition.interimResults = false;
-    recognition.maxAlternatives = 1; // 모바일 최적화 옵션
-    recognition.continuous = false;
+    recognition.maxAlternatives = 1;
+    recognition.continuous = true;
+    recognitionRef.current = recognition;
 
     recognition.onstart = () => {
       setIsRecording(true);
-      setVoiceText('듣고 있습니다...');
+      setVoiceText('듣고 있습니다... 마이크를 다시 누르면 정지됩니다.');
     };
 
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
+      const lastIndex = event.results.length - 1;
+      const transcript = event.results[lastIndex][0].transcript;
       setVoiceText(`인식됨: "${transcript}"`);
-      setIsRecording(false);
       
       const parsedData = parseKoreanVoice(transcript);
       console.log('분석 결과:', parsedData);
@@ -51,9 +62,6 @@ export default function Home() {
         window.speechSynthesis.speak(utterance);
         alert(msg);
       } else {
-        setVoiceText('일정을 시트에 자동 기록하는 중...');
-        
-        // 시트에만 기록 (강사료 계산 로직)
         const duration = parsedData.duration || 2;
         const isDibe = parsedData.institution?.includes('디베') || transcript.includes('디베');
         
@@ -63,8 +71,8 @@ export default function Home() {
         let formula = `=${duration}*30000`;
         
         if (isDibe) {
-          const blocks = Math.ceil(duration / 2); // 2시간당 1블럭
-          basePay = 12100 * 0.5; // 6050원
+          const blocks = Math.ceil(duration / 2);
+          basePay = 12100 * 0.5;
           totalFee = (duration * hourlyRate) + (blocks * basePay);
           formula = `=(${duration}*30000)+(${blocks}*6050)`;
         }
@@ -81,44 +89,30 @@ export default function Home() {
           formula: formula
         };
         
+        saveEventToLocal(feeData as any);
+        const now = new Date();
+        const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        setStats(getMonthlyStats(monthStr));
+
+        setVoiceText('✅ 일정이 저장되었습니다! (마이크를 다시 눌러 정지할 수 있습니다)');
+
         fetch('/api/sheets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(feeData)
-        })
-        .then(async res => {
-          const data = await res.json();
-          if (!data.success) throw new Error(`[시트 에러] ${data.error || data.message || '알 수 없는 에러'}`);
-          return data;
-        })
-        .then(sheetsRes => {
-          // 로컬 저장소에 추가
-          saveEventToLocal(feeData as any);
-          
-          // 화면 통계 즉시 갱신
-          const now = new Date();
-          const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-          setStats(getMonthlyStats(monthStr));
-
-          setVoiceText('✅ 시트 등록 및 내 캘린더 저장이 완료되었습니다!');
-          alert('일정이 성공적으로 등록되고 강사료가 기록되었습니다.');
-        })
-        .catch(err => {
-          console.error(err);
-          setVoiceText(`❌ 저장 실패: ${err.message}`);
-          alert(`에러 원인: ${err.message}`);
-        });
+        }).catch(e => console.log('시트 에러 무시', e));
       }
     };
 
     recognition.onerror = (event: any) => {
-      setIsRecording(false);
       if (event.error !== 'no-speech') {
+        setIsRecording(false);
         setVoiceText(`오류 발생: ${event.error}`);
-        alert(`마이크 권한 오류가 발생했습니다 (${event.error}). 브라우저 설정에서 마이크를 허용해주시거나 Chrome 브라우저를 이용해주세요.`);
-      } else {
-        setVoiceText('마이크 버튼을 누르고 교육 일정을 말해주세요.');
       }
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
     };
 
     recognition.start();

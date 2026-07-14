@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { parseKoreanVoice } from '@/utils/nlp';
-import { saveEventToLocal, getLocalEvents, ScheduleEvent } from '@/utils/storage';
+import { saveEventToLocal, getLocalEvents, ScheduleEvent, deleteEventFromLocal, updateEventInLocal } from '@/utils/storage';
 
 export default function SchedulePage() {
   const [isRecording, setIsRecording] = useState(false);
@@ -10,6 +10,8 @@ export default function SchedulePage() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
+  const [editId, setEditId] = useState<string | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
     setEvents(getLocalEvents());
@@ -25,6 +27,15 @@ export default function SchedulePage() {
   });
 
   const handleMicClick = () => {
+    if (isRecording) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsRecording(false);
+      setVoiceText('음성 인식을 중지했습니다.');
+      return;
+    }
+
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
@@ -36,21 +47,20 @@ export default function SchedulePage() {
     recognition.lang = 'ko-KR';
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
-    recognition.continuous = false;
+    recognition.continuous = true;
+    recognitionRef.current = recognition;
 
     recognition.onstart = () => {
       setIsRecording(true);
-      setVoiceText('듣고 있습니다...');
+      setVoiceText('듣고 있습니다... 마이크를 다시 누르면 정지됩니다.');
     };
 
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
+      const lastIndex = event.results.length - 1;
+      const transcript = event.results[lastIndex][0].transcript;
       setVoiceText(`인식됨: "${transcript}"`);
-      setIsRecording(false);
       
       const parsedData = parseKoreanVoice(transcript);
-      
-      setVoiceText('일정을 시트에 자동 기록하는 중...');
       
       const duration = parsedData.duration || 2;
       const isDibe = parsedData.institution?.includes('디베') || transcript.includes('디베');
@@ -74,36 +84,26 @@ export default function SchedulePage() {
         duration, fee: hourlyRate, basePay: isDibe ? basePay : 0, totalFee, formula
       };
       
+      saveEventToLocal(feeData as any);
+      setEvents(getLocalEvents());
+      setVoiceText('✅ 일정이 저장되었습니다! (마이크를 다시 눌러 정지할 수 있습니다)');
+      
       fetch('/api/sheets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(feeData)
-      }).then(async res => {
-        const data = await res.json();
-        if (!data.success) throw new Error(`[시트 에러] ${data.error || data.message || '알 수 없는 에러'}`);
-        return data;
-      })
-      .then(sheetsRes => {
-        saveEventToLocal(feeData as any);
-        setEvents(getLocalEvents());
-        setVoiceText('✅ 시트 등록 및 내 캘린더 저장 완료!');
-        alert('일정이 성공적으로 등록되었습니다.');
-      })
-      .catch(err => {
-        console.error(err);
-        setVoiceText(`❌ 에러: ${err.message}`);
-        alert(`에러 원인: ${err.message}`);
-      });
+      }).catch(e => console.log('시트 API 에러 무시', e));
     };
 
     recognition.onerror = (event: any) => {
-      setIsRecording(false);
       if (event.error !== 'no-speech') {
+        setIsRecording(false);
         setVoiceText(`오류 발생: ${event.error}`);
-        alert(`마이크 권한 오류 (${event.error}). 폰의 Chrome 브라우저에서 마이크 접근을 허용해주세요.`);
-      } else {
-        setVoiceText('마이크 버튼을 누르고 일정을 말해주세요.');
       }
+    };
+    
+    recognition.onend = () => {
+        setIsRecording(false);
     };
 
     recognition.start();
@@ -130,60 +130,48 @@ export default function SchedulePage() {
       location: manualForm.institution
     };
 
-    setVoiceText('구글 캘린더와 시트에 수동 일정을 저장하는 중...');
+    const isDibe = parsedData.institution?.includes('디베');
+    let hourlyRate = 30000;
+    let basePay = 0;
+    let totalFee = duration * hourlyRate;
+    let formula = `=${duration}*30000`;
     
+    if (isDibe) {
+      const blocks = Math.ceil(duration / 2);
+      basePay = 12100 * 0.5;
+      totalFee = (duration * hourlyRate) + (blocks * basePay);
+      formula = `=(${duration}*30000)+(${blocks}*6050)`;
+    }
+
+    const feeData = {
+      ...parsedData, duration, fee: hourlyRate, basePay: isDibe ? basePay : 0, totalFee, formula
+    };
+
+    if (editId) {
+      updateEventInLocal(editId, feeData as any);
+      setEditId(null);
+      setVoiceText('✅ 일정 수정 완료!');
+      alert('일정이 성공적으로 수정되었습니다.');
+    } else {
+      saveEventToLocal(feeData as any);
+      setVoiceText('✅ 수동 일정 등록 완료!');
+      alert('일정이 성공적으로 등록되었습니다.');
+    }
+    
+    setEvents(getLocalEvents());
+    setManualForm({...manualForm, course: '', institution: ''});
+
     fetch('/api/calendar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(parsedData)
-    })
-    .then(async res => {
-      const data = await res.json();
-      if (!data.success) throw new Error(`[캘린더 에러] ${data.error || data.message || '알 수 없는 에러'}`);
-      return data;
-    })
-    .then(calendarRes => {
-      const isDibe = parsedData.institution?.includes('디베');
-      let hourlyRate = 30000;
-      let basePay = 0;
-      let totalFee = duration * hourlyRate;
-      let formula = `=${duration}*30000`;
-      
-      if (isDibe) {
-        const blocks = Math.ceil(duration / 2);
-        basePay = 12100 * 0.5;
-        totalFee = (duration * hourlyRate) + (blocks * basePay);
-        formula = `=(${duration}*30000)+(${blocks}*6050)`;
-      }
+    }).catch(e => console.log('캘린더 에러 무시', e));
 
-      const feeData = {
-        ...parsedData, duration, fee: hourlyRate, basePay: isDibe ? basePay : 0, totalFee, formula
-      };
-      
-      return fetch('/api/sheets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(feeData)
-      }).then(async res => {
-        const data = await res.json();
-        if (!data.success) throw new Error(`[시트 에러] ${data.error || data.message || '알 수 없는 에러'}`);
-        
-        // 로컬에 저장
-        saveEventToLocal(feeData as any);
-        setEvents(getLocalEvents());
-        return data;
-      });
-    })
-    .then(sheetsRes => {
-      setVoiceText('✅ 캘린더 및 시트 수동 등록 완료!');
-      alert('일정이 구글 캘린더와 시트에 성공적으로 동기화되었습니다.');
-      setManualForm({...manualForm, course: '', institution: ''}); // 폼 초기화
-    })
-    .catch(err => {
-      console.error(err);
-      setVoiceText(`❌ 에러: ${err.message}`);
-      alert(`에러 원인: ${err.message}`);
-    });
+    fetch('/api/sheets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(feeData)
+    }).catch(e => console.log('시트 에러 무시', e));
   };
 
   const handleDeleteEvent = (id: string) => {
@@ -194,6 +182,7 @@ export default function SchedulePage() {
   };
 
   const handleEditEvent = (event: ScheduleEvent) => {
+    setEditId(event.id);
     setManualForm({
       date: event.date,
       start: event.start,
@@ -202,7 +191,7 @@ export default function SchedulePage() {
       institution: event.institution
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    setVoiceText('선택한 일정을 폼으로 불러왔습니다. 수정 후 다시 [구글캘린더로 보내줘]를 누르면 새 일정으로 추가됩니다. (기존 일정은 수동 삭제 필요)');
+    setVoiceText('선택한 일정을 폼으로 불러왔습니다. 수정 후 저장 버튼을 누르면 업데이트됩니다.');
   };
 
   // 7월 달력 렌더링용 배열
@@ -214,38 +203,36 @@ export default function SchedulePage() {
         <h1>일정 관리</h1>
       </div>
 
-      <div className="mic-section" style={{marginBottom: '20px'}}>
-        <h3 style={{fontSize: '1.2rem', marginBottom: '10px'}}>음성으로 시트에 바로 등록</h3>
-        <p className="grey-text" style={{color: 'var(--text-muted)'}}>{voiceText}</p>
-        <p style={{fontSize: '0.8rem', color: 'var(--primary)'}}>※ 음성 등록은 에러 방지를 위해 캘린더를 건너뛰고 시트에만 즉시 저장됩니다.</p>
-        
-        <button 
-          className={`mic-btn-huge ${isRecording ? 'recording' : ''}`}
-          onClick={handleMicClick}
-        >
-          <i className="material-icons">mic</i>
-        </button>
-      </div>
-
       <div className="stat-card" style={{marginBottom: '20px'}}>
-        <h3 style={{marginBottom: '15px'}}>수동으로 구글 캘린더/시트 동기화</h3>
-        <form onSubmit={handleManualSubmit} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-          <input type="date" value={manualForm.date} onChange={e => setManualForm({...manualForm, date: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
-          <div style={{display: 'flex', gap: '10px'}}>
-            <input type="time" value={manualForm.start} onChange={e => setManualForm({...manualForm, start: e.target.value})} style={{flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
-            <span style={{lineHeight: '40px'}}>~</span>
-            <input type="time" value={manualForm.end} onChange={e => setManualForm({...manualForm, end: e.target.value})} style={{flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
-          </div>
-          <input type="text" placeholder="과정명 (예: 스마트폰 기초, 디베)" value={manualForm.course} onChange={e => setManualForm({...manualForm, course: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
-          <input type="text" placeholder="기관명 (예: 연산4동)" value={manualForm.institution} onChange={e => setManualForm({...manualForm, institution: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
-          <button type="submit" className="btn-primary" style={{width: '100%', padding: '15px', marginTop: '10px', fontSize: '1rem', fontWeight: 'bold'}}>
-            📅 일정을 구글캘린더로 보내줘
+        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px'}}>
+          <h3 style={{margin: 0}}>이번 달 일정 달력</h3>
+          <button 
+            onClick={handleMicClick} 
+            className={`mic-btn-small ${isRecording ? 'recording' : ''}`}
+            style={{
+              background: isRecording ? '#ff4d4f' : 'var(--primary)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '50%',
+              width: '40px',
+              height: '40px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+            }}
+          >
+            <i className="material-icons">mic</i>
           </button>
-        </form>
-      </div>
+        </div>
+        
+        {voiceText !== '마이크 버튼을 누르고 일정을 말해주세요.' && (
+          <p style={{color: 'var(--primary)', fontSize: '0.9rem', marginBottom: '15px', padding: '10px', background: '#e6f7ff', borderRadius: '5px'}}>
+            {voiceText}
+          </p>
+        )}
 
-      <div className="stat-card">
-        <h3 style={{marginBottom: '15px'}}>이번 달 일정 달력</h3>
         <div style={{
           display: 'grid', 
           gridTemplateColumns: 'repeat(7, 1fr)', 
@@ -255,7 +242,6 @@ export default function SchedulePage() {
           {['일', '월', '화', '수', '목', '금', '토'].map(day => (
             <div key={day} style={{fontWeight: 'bold', color: 'var(--text-muted)'}}>{day}</div>
           ))}
-          {/* 공백 3칸 */}
           <div/><div/><div/>
           {daysInMonth.map(day => {
             const dateStr = `2026-07-${String(day).padStart(2, '0')}`;
@@ -283,7 +269,6 @@ export default function SchedulePage() {
           })}
         </div>
         
-        {/* 선택한 날짜 일정 표시 */}
         <div style={{marginTop: '20px'}}>
           <h4 style={{borderBottom: '1px solid #eee', paddingBottom: '10px'}}>내 일정 리스트 (최근 순)</h4>
           {events.slice().reverse().map(e => (
@@ -303,6 +288,29 @@ export default function SchedulePage() {
           {events.length === 0 && <p style={{fontSize: '0.9rem', color: '#999', marginTop: '10px'}}>저장된 일정이 없습니다.</p>}
         </div>
       </div>
+
+      <div className="stat-card" style={{marginBottom: '20px'}}>
+        <h3 style={{marginBottom: '15px'}}>{editId ? '일정 수정' : '수동으로 일정 등록'}</h3>
+        <form onSubmit={handleManualSubmit} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+          <input type="date" value={manualForm.date} onChange={e => setManualForm({...manualForm, date: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+          <div style={{display: 'flex', gap: '10px'}}>
+            <input type="time" value={manualForm.start} onChange={e => setManualForm({...manualForm, start: e.target.value})} style={{flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+            <span style={{lineHeight: '40px'}}>~</span>
+            <input type="time" value={manualForm.end} onChange={e => setManualForm({...manualForm, end: e.target.value})} style={{flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+          </div>
+          <input type="text" placeholder="과정명 (예: 스마트폰 기초, 디베)" value={manualForm.course} onChange={e => setManualForm({...manualForm, course: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+          <input type="text" placeholder="기관명 (예: 연산4동)" value={manualForm.institution} onChange={e => setManualForm({...manualForm, institution: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+          <button type="submit" className="btn-primary" style={{width: '100%', padding: '15px', marginTop: '10px', fontSize: '1rem', fontWeight: 'bold'}}>
+            {editId ? '💾 일정 수정 저장' : '📅 일정 등록 저장'}
+          </button>
+          {editId && (
+            <button type="button" onClick={() => { setEditId(null); setManualForm({...manualForm, course: '', institution: ''}); }} className="btn-secondary" style={{width: '100%', padding: '15px', fontSize: '1rem', background: '#ccc', color: '#333', border: 'none', borderRadius: '5px', marginTop: '5px'}}>
+              취소
+            </button>
+          )}
+        </form>
+      </div>
+
     </div>
   );
 }
