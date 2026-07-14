@@ -22,8 +22,10 @@ export default function SchedulePage() {
     date: new Date().toISOString().split('T')[0],
     start: '14:00',
     end: '16:00',
+    institution: '',
     course: '',
-    institution: ''
+    repeat: '없음',
+    notification: '없음'
   });
 
   const handleMicClick = () => {
@@ -64,16 +66,37 @@ export default function SchedulePage() {
       
       const duration = parsedData.duration || 2;
       const isDibe = parsedData.institution?.includes('디베') || transcript.includes('디베');
-      let hourlyRate = 30000;
-      let basePay = 0;
-      let totalFee = duration * hourlyRate;
-      let formula = `=${duration}*30000`;
+      let hourlyRate: number | string = '';
+      let basePay: number | string = '';
+      let totalFee: number | string = '';
+      let formula = '';
+      let dibeSumFormula = '';
       
       if (isDibe) {
+        hourlyRate = 30000;
         const blocks = Math.ceil(duration / 2);
-        basePay = 12100 * 0.5;
-        totalFee = (duration * hourlyRate) + (blocks * basePay);
+        basePay = 6050 * blocks;
+        totalFee = (duration * hourlyRate) + basePay;
         formula = `=(${duration}*30000)+(${blocks}*6050)`;
+
+        const rDate = new Date(parsedData.date || new Date().toISOString().split('T')[0]);
+        let sMonth = rDate.getMonth();
+        let sYear = rDate.getFullYear();
+        if (rDate.getDate() < 15) {
+          sMonth -= 1;
+          if (sMonth < 0) { sMonth = 11; sYear -= 1; }
+        }
+        const sDate = `${sYear}-${String(sMonth + 1).padStart(2, '0')}-15`;
+        let eMonth = sMonth + 1;
+        let eYear = sYear;
+        if (eMonth > 11) { eMonth = 0; eYear += 1; }
+        const eDate = `${eYear}-${String(eMonth + 1).padStart(2, '0')}-14`;
+        dibeSumFormula = `=SUMIFS(I:I, B:B, "*디베*", A:A, ">=${sDate}", A:A, "<=${eDate}")`;
+      } else if (parsedData.fee) {
+        hourlyRate = parsedData.fee;
+        basePay = 0;
+        totalFee = duration * Number(hourlyRate);
+        formula = `=${duration}*${hourlyRate}`;
       }
 
       const feeData = {
@@ -81,7 +104,7 @@ export default function SchedulePage() {
         date: parsedData.date || new Date().toISOString().split('T')[0],
         start: parsedData.start || '09:00',
         end: parsedData.end || '11:00',
-        duration, fee: hourlyRate, basePay: isDibe ? basePay : 0, totalFee, formula
+        duration, fee: hourlyRate, basePay: isDibe ? basePay : 0, totalFee, formula, dibeSumFormula
       };
       
       saveEventToLocal(feeData as any);
@@ -125,26 +148,44 @@ export default function SchedulePage() {
       start: manualForm.start,
       end: manualForm.end,
       duration: duration,
-      course: manualForm.course,
       institution: manualForm.institution,
-      location: manualForm.institution
+      course: manualForm.course,
+      location: manualForm.institution,
+      repeat: manualForm.repeat,
+      notification: manualForm.notification
     };
 
     const isDibe = parsedData.institution?.includes('디베');
-    let hourlyRate = 30000;
-    let basePay = 0;
-    let totalFee = duration * hourlyRate;
-    let formula = `=${duration}*30000`;
+    let hourlyRate: number | string = '';
+    let basePay: number | string = '';
+    let totalFee: number | string = '';
+    let formula = '';
+    let dibeSumFormula = '';
     
     if (isDibe) {
+      hourlyRate = 30000;
       const blocks = Math.ceil(duration / 2);
-      basePay = 12100 * 0.5;
-      totalFee = (duration * hourlyRate) + (blocks * basePay);
+      basePay = 6050 * blocks;
+      totalFee = (duration * hourlyRate) + basePay;
       formula = `=(${duration}*30000)+(${blocks}*6050)`;
+
+      const rDate = new Date(parsedData.date);
+      let sMonth = rDate.getMonth();
+      let sYear = rDate.getFullYear();
+      if (rDate.getDate() < 15) {
+        sMonth -= 1;
+        if (sMonth < 0) { sMonth = 11; sYear -= 1; }
+      }
+      const sDate = `${sYear}-${String(sMonth + 1).padStart(2, '0')}-15`;
+      let eMonth = sMonth + 1;
+      let eYear = sYear;
+      if (eMonth > 11) { eMonth = 0; eYear += 1; }
+      const eDate = `${eYear}-${String(eMonth + 1).padStart(2, '0')}-14`;
+      dibeSumFormula = `=SUMIFS(I:I, B:B, "*디베*", A:A, ">=${sDate}", A:A, "<=${eDate}")`;
     }
 
     const feeData = {
-      ...parsedData, duration, fee: hourlyRate, basePay: isDibe ? basePay : 0, totalFee, formula
+      ...parsedData, duration, fee: hourlyRate, basePay: isDibe ? basePay : 0, totalFee, formula, dibeSumFormula
     };
 
     if (editId) {
@@ -159,7 +200,7 @@ export default function SchedulePage() {
     }
     
     setEvents(getLocalEvents());
-    setManualForm({...manualForm, course: '', institution: ''});
+    setManualForm({...manualForm, course: '', institution: '', repeat: '없음', notification: '없음'});
 
     fetch('/api/calendar', {
       method: 'POST',
@@ -187,8 +228,10 @@ export default function SchedulePage() {
       date: event.date,
       start: event.start,
       end: event.end,
+      institution: event.institution,
       course: event.course,
-      institution: event.institution
+      repeat: event.repeat || '없음',
+      notification: event.notification || '없음'
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
     setVoiceText('선택한 일정을 폼으로 불러왔습니다. 수정 후 저장 버튼을 누르면 업데이트됩니다.');
@@ -292,19 +335,43 @@ export default function SchedulePage() {
       <div className="stat-card" style={{marginBottom: '20px'}}>
         <h3 style={{marginBottom: '15px'}}>{editId ? '일정 수정' : '수동으로 일정 등록'}</h3>
         <form onSubmit={handleManualSubmit} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+          {/* 1. 날짜 */}
           <input type="date" value={manualForm.date} onChange={e => setManualForm({...manualForm, date: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+          
+          {/* 2. 시간 */}
           <div style={{display: 'flex', gap: '10px'}}>
             <input type="time" value={manualForm.start} onChange={e => setManualForm({...manualForm, start: e.target.value})} style={{flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
             <span style={{lineHeight: '40px'}}>~</span>
             <input type="time" value={manualForm.end} onChange={e => setManualForm({...manualForm, end: e.target.value})} style={{flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
           </div>
-          <input type="text" placeholder="과정명 (예: 스마트폰 기초, 디베)" value={manualForm.course} onChange={e => setManualForm({...manualForm, course: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+
+          {/* 3. 기관명 */}
           <input type="text" placeholder="기관명 (예: 연산4동)" value={manualForm.institution} onChange={e => setManualForm({...manualForm, institution: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+
+          {/* 4. 과정명 */}
+          <input type="text" placeholder="과정명 (예: 스마트폰 기초, 디베)" value={manualForm.course} onChange={e => setManualForm({...manualForm, course: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+          
+          {/* 5. 반복설정 */}
+          <select value={manualForm.repeat} onChange={e => setManualForm({...manualForm, repeat: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc', background: 'white'}}>
+            <option value="없음">반복 없음</option>
+            <option value="매주">매주 반복</option>
+            <option value="매월">매월 반복</option>
+          </select>
+
+          {/* 6. 알림설정 */}
+          <select value={manualForm.notification} onChange={e => setManualForm({...manualForm, notification: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc', background: 'white'}}>
+            <option value="없음">알림 없음</option>
+            <option value="10분전">10분 전</option>
+            <option value="30분전">30분 전</option>
+            <option value="1시간전">1시간 전</option>
+            <option value="1일전">1일 전</option>
+          </select>
+
           <button type="submit" className="btn-primary" style={{width: '100%', padding: '15px', marginTop: '10px', fontSize: '1rem', fontWeight: 'bold'}}>
             {editId ? '💾 일정 수정 저장' : '📅 일정 등록 저장'}
           </button>
           {editId && (
-            <button type="button" onClick={() => { setEditId(null); setManualForm({...manualForm, course: '', institution: ''}); }} className="btn-secondary" style={{width: '100%', padding: '15px', fontSize: '1rem', background: '#ccc', color: '#333', border: 'none', borderRadius: '5px', marginTop: '5px'}}>
+            <button type="button" onClick={() => { setEditId(null); setManualForm({...manualForm, course: '', institution: '', repeat: '없음', notification: '없음'}); }} className="btn-secondary" style={{width: '100%', padding: '15px', fontSize: '1rem', background: '#ccc', color: '#333', border: 'none', borderRadius: '5px', marginTop: '5px'}}>
               취소
             </button>
           )}

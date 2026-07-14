@@ -65,16 +65,37 @@ export default function Home() {
         const duration = parsedData.duration || 2;
         const isDibe = parsedData.institution?.includes('디베') || transcript.includes('디베');
         
-        let hourlyRate = 30000;
-        let basePay = 0;
-        let totalFee = duration * hourlyRate;
-        let formula = `=${duration}*30000`;
+        let hourlyRate: number | string = '';
+        let basePay: number | string = '';
+        let totalFee: number | string = '';
+        let formula = '';
+        let dibeSumFormula = '';
         
         if (isDibe) {
+          hourlyRate = 30000;
           const blocks = Math.ceil(duration / 2);
-          basePay = 12100 * 0.5;
-          totalFee = (duration * hourlyRate) + (blocks * basePay);
+          basePay = 6050 * blocks;
+          totalFee = (duration * hourlyRate) + basePay;
           formula = `=(${duration}*30000)+(${blocks}*6050)`;
+          
+          const rDate = new Date(parsedData.date || new Date().toISOString().split('T')[0]);
+          let sMonth = rDate.getMonth();
+          let sYear = rDate.getFullYear();
+          if (rDate.getDate() < 15) {
+            sMonth -= 1;
+            if (sMonth < 0) { sMonth = 11; sYear -= 1; }
+          }
+          const sDate = `${sYear}-${String(sMonth + 1).padStart(2, '0')}-15`;
+          let eMonth = sMonth + 1;
+          let eYear = sYear;
+          if (eMonth > 11) { eMonth = 0; eYear += 1; }
+          const eDate = `${eYear}-${String(eMonth + 1).padStart(2, '0')}-14`;
+          dibeSumFormula = `=SUMIFS(I:I, B:B, "*디베*", A:A, ">=${sDate}", A:A, "<=${eDate}")`;
+        } else if (parsedData.fee) {
+          hourlyRate = parsedData.fee;
+          basePay = 0;
+          totalFee = duration * Number(hourlyRate);
+          formula = `=${duration}*${hourlyRate}`;
         }
 
         const feeData = {
@@ -86,7 +107,8 @@ export default function Home() {
           fee: hourlyRate,
           basePay: isDibe ? basePay : 0,
           totalFee: totalFee,
-          formula: formula
+          formula: formula,
+          dibeSumFormula: dibeSumFormula
         };
         
         saveEventToLocal(feeData as any);

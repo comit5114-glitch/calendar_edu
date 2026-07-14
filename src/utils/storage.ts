@@ -6,9 +6,11 @@ export interface ScheduleEvent {
   duration: number;
   course: string;
   institution: string;
-  fee: number;
-  basePay: number;
-  totalFee: number;
+  fee: number | string;
+  basePay: number | string;
+  totalFee: number | string;
+  repeat?: string;
+  notification?: string;
 }
 
 export function saveEventToLocal(event: Omit<ScheduleEvent, 'id'>) {
@@ -48,6 +50,9 @@ export function getMonthlyStats(monthStr: string) { // format 'YYYY-MM'
   return {
     count: monthly.length,
     totalDuration: monthly.reduce((sum, e) => sum + (e.duration || 0), 0),
-    totalFee: monthly.reduce((sum, e) => sum + (e.totalFee || 0), 0)
+    totalFee: monthly.reduce((sum, e) => {
+      const fee = typeof e.totalFee === 'number' ? e.totalFee : (parseInt(e.totalFee as string) || 0);
+      return sum + fee;
+    }, 0)
   };
 }
