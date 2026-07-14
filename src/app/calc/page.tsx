@@ -8,43 +8,48 @@ export default function CalcPage() {
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
   const [dibePeriod, setDibePeriod] = useState({ label: '', total: 0 });
   const [listLimit, setListLimit] = useState(5);
+  const [dibeStart, setDibeStart] = useState('');
+  const [dibeEnd, setDibeEnd] = useState('');
 
   useEffect(() => {
     const now = new Date();
-    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    setStats(getMonthlyStats(monthStr));
-    
-    // 이번 달 이벤트만 필터링
-    const all = getLocalEvents();
-    setEvents(all.filter(e => e.date.startsWith(monthStr)));
-
-    // 디베 15일~14일 정산 계산
     let dStartMonth = now.getMonth();
     let dStartYear = now.getFullYear();
     if (now.getDate() < 15) {
       dStartMonth -= 1;
       if (dStartMonth < 0) { dStartMonth = 11; dStartYear -= 1; }
     }
-    const dibeStartDate = new Date(dStartYear, dStartMonth, 15);
+    const defStart = `${dStartYear}-${String(dStartMonth+1).padStart(2,'0')}-15`;
     
     let dEndMonth = dStartMonth + 1;
     let dEndYear = dStartYear;
     if (dEndMonth > 11) { dEndMonth = 0; dEndYear += 1; }
-    const dibeEndDate = new Date(dEndYear, dEndMonth, 14, 23, 59, 59);
-
-    let dibePeriodTotal = 0;
-    all.forEach(e => {
-      if (e.institution?.includes('디베')) {
-        const eDate = new Date(e.date);
-        if (eDate >= dibeStartDate && eDate <= dibeEndDate) {
-          dibePeriodTotal += (typeof e.totalFee === 'number' ? e.totalFee : (parseInt(e.totalFee as string) || 0));
-        }
-      }
-    });
-
-    const label = `${dStartYear}.${String(dStartMonth+1).padStart(2,'0')}.15 ~ ${dEndYear}.${String(dEndMonth+1).padStart(2,'0')}.14`;
-    setDibePeriod({ label, total: dibePeriodTotal });
+    const defEnd = `${dEndYear}-${String(dEndMonth+1).padStart(2,'0')}-14`;
+    
+    setDibeStart(defStart);
+    setDibeEnd(defEnd);
   }, []);
+
+  useEffect(() => {
+    const now = new Date();
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    setStats(getMonthlyStats(monthStr));
+    
+    const all = getLocalEvents();
+    setEvents(all.filter(e => e.date.startsWith(monthStr)));
+
+    if (dibeStart && dibeEnd) {
+      let dibePeriodTotal = 0;
+      all.forEach(e => {
+        if (e.institution?.includes('디베')) {
+          if (e.date >= dibeStart && e.date <= dibeEnd) {
+            dibePeriodTotal += (typeof e.totalFee === 'number' ? e.totalFee : (parseInt(e.totalFee as string) || 0));
+          }
+        }
+      });
+      setDibePeriod({ label: `${dibeStart} ~ ${dibeEnd}`, total: dibePeriodTotal });
+    }
+  }, [dibeStart, dibeEnd]);
 
   return (
     <div>
@@ -60,8 +65,20 @@ export default function CalcPage() {
 
       <div className="stat-card" style={{marginBottom: '20px', background: '#fff3e0', border: '1px solid #ff9800'}}>
         <h3 style={{marginBottom: '10px', color: '#e65100'}}>디베 정산 기간 합계</h3>
-        <p style={{fontSize: '0.9rem', color: '#e65100', marginBottom: '10px'}}>{dibePeriod.label}</p>
+        <div style={{display: 'flex', gap: '10px', marginBottom: '15px', alignItems: 'center'}}>
+          <input type="date" value={dibeStart} onChange={e => setDibeStart(e.target.value)} style={{padding: '5px', borderRadius: '4px', border: '1px solid #ccc', flex: 1}}/>
+          <span style={{color: '#e65100'}}>~</span>
+          <input type="date" value={dibeEnd} onChange={e => setDibeEnd(e.target.value)} style={{padding: '5px', borderRadius: '4px', border: '1px solid #ccc', flex: 1}}/>
+        </div>
         <div style={{fontSize: '1.8rem', fontWeight: 'bold', color: '#ff9800'}}>{dibePeriod.total.toLocaleString()}원</div>
+        <div style={{marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #ffb74d', display: 'flex', justifyContent: 'space-between', color: '#e65100'}}>
+          <span>고용보험 (0.9%)</span>
+          <span>-{Math.floor(dibePeriod.total * 0.009).toLocaleString()}원</span>
+        </div>
+        <div style={{display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.2rem', color: '#e65100', marginTop: '5px'}}>
+          <span>실수령액</span>
+          <span>{Math.floor(dibePeriod.total * 0.991).toLocaleString()}원</span>
+        </div>
       </div>
 
       <div className="stat-card">
@@ -103,6 +120,12 @@ export default function CalcPage() {
                       <span>합계</span>
                       <span>{e.totalFee === '' ? '미정' : `${Number(e.totalFee).toLocaleString()}원`}</span>
                     </div>
+                    {!isDibe && e.totalFee !== '' && (
+                      <div style={{display: 'flex', justifyContent: 'space-between', marginTop: '5px', fontSize: '0.9rem', color: '#00897b'}}>
+                        <span>실수령액 (3.3% 공제)</span>
+                        <span>{Math.floor(Number(e.totalFee) * 0.967).toLocaleString()}원</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               );

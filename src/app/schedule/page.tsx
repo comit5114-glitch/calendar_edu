@@ -115,7 +115,7 @@ export default function SchedulePage() {
     transcriptRef.current = '';
     const recognition = new SpeechRecognition();
     recognition.lang = 'ko-KR';
-    recognition.interimResults = true;
+    recognition.interimResults = false;
     recognition.maxAlternatives = 1;
     recognition.continuous = true;
     recognitionRef.current = recognition;
@@ -127,11 +127,11 @@ export default function SchedulePage() {
 
     recognition.onresult = (event: any) => {
       let currentTranscript = '';
-      for (let i = 0; i < event.results.length; i++) {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
         currentTranscript += event.results[i][0].transcript + ' ';
       }
-      transcriptRef.current = currentTranscript.trim();
-      setVoiceText(`"${transcriptRef.current}"\n(완료 시 마이크를 다시 눌러주세요)`);
+      transcriptRef.current += currentTranscript;
+      setVoiceText(`"${transcriptRef.current.trim()}"\n(완료 시 마이크를 다시 눌러주세요)`);
     };
 
     recognition.onerror = (event: any) => {
@@ -329,6 +329,32 @@ export default function SchedulePage() {
 
   const handleDateClick = (dateStr: string) => {
     setSelectedModalDate(dateStr);
+    
+    const hasEvents = events.some(e => {
+      if (e.endDate && e.endDate !== e.date) {
+        return dateStr >= e.date && dateStr <= e.endDate;
+      }
+      return e.date === dateStr;
+    });
+
+    if (!hasEvents) {
+      setEditId(null);
+      setIsAddingNew(true);
+      setManualForm({
+        date: dateStr,
+        endDate: dateStr,
+        start: '14:00',
+        end: '16:00',
+        course: '',
+        institution: '',
+        repeat: '없음',
+        notification: '없음',
+        fee: ''
+      });
+    } else {
+      setIsAddingNew(false);
+      setEditId(null);
+    }
   };
 
   const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date());
@@ -535,13 +561,34 @@ export default function SchedulePage() {
             
             {editId || isAddingNew ? (
               <form onSubmit={(e) => { handleManualSubmit(e); setSelectedModalDate(null); setIsAddingNew(false); }} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
+                  <input type="date" value={manualForm.date} onChange={e => setManualForm({...manualForm, date: e.target.value})} style={{flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+                  <span style={{fontWeight: 'bold', color: '#666'}}>~</span>
+                  <input type="date" value={manualForm.endDate} onChange={e => setManualForm({...manualForm, endDate: e.target.value})} style={{flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+                </div>
                 <div style={{display: 'flex', gap: '10px'}}>
                   <input type="time" value={manualForm.start} onChange={e => setManualForm({...manualForm, start: e.target.value})} style={{flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
                   <span style={{lineHeight: '40px'}}>~</span>
                   <input type="time" value={manualForm.end} onChange={e => setManualForm({...manualForm, end: e.target.value})} style={{flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
                 </div>
-                <input type="text" placeholder="기관명" value={manualForm.institution} onChange={e => setManualForm({...manualForm, institution: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
-                <input type="text" placeholder="과정명" value={manualForm.course} onChange={e => setManualForm({...manualForm, course: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+                <input type="text" placeholder="기관명 (예: 연산4동)" value={manualForm.institution} onChange={e => setManualForm({...manualForm, institution: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+                <input type="text" placeholder="과정명 (예: 스마트폰 기초, 디베)" value={manualForm.course} onChange={e => setManualForm({...manualForm, course: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+                
+                <select value={manualForm.repeat} onChange={e => setManualForm({...manualForm, repeat: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc', background: 'white'}}>
+                  <option value="없음">반복 없음</option>
+                  <option value="매일(월-금)">매일(월-금)</option>
+                  <option value="매주">매주 반복</option>
+                  <option value="매월">매월 반복</option>
+                </select>
+
+                <select value={manualForm.notification} onChange={e => setManualForm({...manualForm, notification: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc', background: 'white'}}>
+                  <option value="없음">알림 없음</option>
+                  <option value="10분전">10분 전</option>
+                  <option value="30분전">30분 전</option>
+                  <option value="1시간전">1시간 전</option>
+                  <option value="1일전">1일 전</option>
+                </select>
+
                 <input type="number" placeholder="시간당 강사료" value={manualForm.fee} onChange={e => setManualForm({...manualForm, fee: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
                 
                 <button type="submit" className="btn-primary" style={{width: '100%', padding: '10px', marginTop: '10px', fontWeight: 'bold', border: 'none', borderRadius: '5px', background: 'var(--primary)', color: 'white', cursor: 'pointer'}}>
@@ -553,7 +600,12 @@ export default function SchedulePage() {
               </form>
             ) : (
               <>
-                {events.filter(e => e.date === selectedModalDate).map(e => (
+                {events.filter(e => {
+                  if (e.endDate && e.endDate !== e.date) {
+                    return selectedModalDate! >= e.date && selectedModalDate! <= e.endDate;
+                  }
+                  return e.date === selectedModalDate;
+                }).map(e => (
                   <div key={e.id} style={{padding: '10px', background: '#f5f5f5', borderRadius: '5px', marginBottom: '10px'}}>
                     <div style={{fontWeight: 'bold'}}>{e.start}~{e.end}</div>
                     <div style={{color: '#444'}}>{e.institution} | {e.course}</div>
@@ -568,7 +620,12 @@ export default function SchedulePage() {
                   </div>
                 ))}
                 
-                {events.filter(e => e.date === selectedModalDate).length === 0 && (
+                {events.filter(e => {
+                  if (e.endDate && e.endDate !== e.date) {
+                    return selectedModalDate! >= e.date && selectedModalDate! <= e.endDate;
+                  }
+                  return e.date === selectedModalDate;
+                }).length === 0 && (
                   <p style={{color: '#999', textAlign: 'center', padding: '20px 0'}}>등록된 일정이 없습니다.</p>
                 )}
 

@@ -74,7 +74,7 @@ export default function Home() {
     transcriptRef.current = '';
     const recognition = new SpeechRecognition();
     recognition.lang = 'ko-KR';
-    recognition.interimResults = true;
+    recognition.interimResults = false;
     recognition.maxAlternatives = 1;
     recognition.continuous = true;
     recognitionRef.current = recognition;
@@ -86,11 +86,11 @@ export default function Home() {
 
     recognition.onresult = (event: any) => {
       let currentTranscript = '';
-      for (let i = 0; i < event.results.length; i++) {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
         currentTranscript += event.results[i][0].transcript + ' ';
       }
-      transcriptRef.current = currentTranscript.trim();
-      setVoiceText(`"${transcriptRef.current}"\n(완료 시 마이크를 다시 눌러주세요)`);
+      transcriptRef.current += currentTranscript;
+      setVoiceText(`"${transcriptRef.current.trim()}"\n(완료 시 마이크를 다시 눌러주세요)`);
     };
 
     recognition.onerror = (event: any) => {

@@ -10,6 +10,7 @@ export interface ParseResult {
   location?: string;
   duration?: number;
   isRecurring?: boolean;
+  repeat?: string;
   searchDate?: string;
   fee?: number | string;
 }
@@ -59,35 +60,58 @@ export function parseKoreanVoice(text: string): ParseResult {
 
   result.date = dateStr;
 
-  // 3. 시간 추출 (오후 2시, 14시 등)
-  let hour = 14; // 기본 14시 (오후 2시)
-  const timeMatch = text.match(/(오전|오후)?\s*(\d+)시/);
-  if (timeMatch) {
-    hour = parseInt(timeMatch[2], 10);
-    if (timeMatch[1] === '오후' && hour < 12) {
-      hour += 12;
+  // 3. 시간 추출 (오후 2시부터 4시까지, 오후 2시, 3시간 등)
+  let startHour = 14; // 기본 14시 (오후 2시)
+  let endHour = 16;
+  
+  const rangeMatch = text.match(/(?:오전|오후)?\s*(\d+)시부터\s*(?:오전|오후)?\s*(\d+)시까지/);
+  if (rangeMatch) {
+    startHour = parseInt(rangeMatch[1], 10);
+    endHour = parseInt(rangeMatch[2], 10);
+    if (text.includes('오후') && startHour < 12) startHour += 12;
+    // 오후 2시부터 4시까지라고 했을 때 4시가 16시임을 유추
+    if (endHour < startHour && endHour < 12) endHour += 12; 
+  } else {
+    const timeMatch = text.match(/(오전|오후)?\s*(\d+)시/);
+    if (timeMatch) {
+      startHour = parseInt(timeMatch[2], 10);
+      if (timeMatch[1] === '오후' && startHour < 12) {
+        startHour += 12;
+      }
+    }
+    
+    const durationMatch = text.match(/(\d+)시간/);
+    if (durationMatch) {
+      endHour = startHour + parseInt(durationMatch[1], 10);
+    } else {
+      endHour = startHour + 2; // 기본 2시간
     }
   }
   
-  const h = String(hour).padStart(2, '0');
-  result.start = `${h}:00`;
-  result.end = String(hour + 2).padStart(2, '0') + ':00'; // 기본 2시간
-  result.duration = 2;
+  const hStart = String(startHour).padStart(2, '0');
+  const hEnd = String(endHour).padStart(2, '0');
+  result.start = `${hStart}:00`;
+  result.end = `${hEnd}:00`;
+  result.duration = endHour - startHour > 0 ? endHour - startHour : 2;
 
-  // 4. 기관 및 장소 추출 (키워드 매칭)
-  if (text.includes('연산4동')) {
-    result.institution = '연산4동 행정복지센터';
-    result.location = '연산4동 행정복지센터';
-  } else if (text.includes('영도구청')) {
-    result.institution = '영도구청';
-    result.location = '영도구청 평생학습관';
+  // 4. 기관 및 장소 추출 (키워드 매칭 확장)
+  const instMatch = text.match(/([가-힣0-9]+(?:동|센터|구청|학교|도서관|복지관|디베))/);
+  if (instMatch) {
+    result.institution = instMatch[1];
+    result.location = instMatch[1];
+  } else if (text.includes('디베')) {
+    result.institution = '디베';
+    result.location = '디베';
   } else {
     result.institution = '미지정 기관';
     result.location = '미지정 장소';
   }
 
   // 5. 교육명 추출
-  if (text.includes('스마트폰')) {
+  const courseMatch = text.match(/([가-힣0-9]+(?:교육|과정|실습|클래스|수업))/);
+  if (courseMatch) {
+    result.course = courseMatch[1];
+  } else if (text.includes('스마트폰')) {
     result.course = '스마트폰 기초교육';
   } else if (text.includes('키오스크')) {
     result.course = '키오스크 실습';
@@ -95,7 +119,32 @@ export function parseKoreanVoice(text: string): ParseResult {
     result.course = '일반 교육';
   }
 
-  result.isRecurring = false;
+  // 6. 금액 추출 (시간당 XX만원, XX원 등)
+  const feeMatch = text.match(/(\d+)(만)?\s*원/);
+  if (feeMatch) {
+    let amount = parseInt(feeMatch[1], 10);
+    if (feeMatch[2] === '만') {
+      amount *= 10000;
+    } else if (amount < 1000) {
+      amount *= 10000; // '3만원'을 '3원'으로 오인식할 경우 대비
+    }
+    result.fee = amount;
+  }
+
+  // 7. 반복 일정 추출
+  if (text.includes('매일')) {
+    result.repeat = '매일(월-금)';
+    result.isRecurring = true;
+  } else if (text.includes('매주')) {
+    result.repeat = '매주';
+    result.isRecurring = true;
+  } else if (text.includes('매월')) {
+    result.repeat = '매월';
+    result.isRecurring = true;
+  } else {
+    result.repeat = '없음';
+    result.isRecurring = false;
+  }
 
   return result;
 }
