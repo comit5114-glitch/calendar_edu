@@ -7,6 +7,7 @@ export default function CalcPage() {
   const [stats, setStats] = useState({ count: 0, totalDuration: 0, totalFee: 0 });
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
   const [dibePeriod, setDibePeriod] = useState({ label: '', total: 0 });
+  const [listLimit, setListLimit] = useState(5);
 
   useEffect(() => {
     const now = new Date();
@@ -70,7 +71,7 @@ export default function CalcPage() {
           <p style={{color: '#999', textAlign: 'center', padding: '20px 0'}}>이번 달 등록된 일정이 없습니다.</p>
         ) : (
           <div style={{display: 'flex', flexDirection: 'column', gap: '15px'}}>
-            {events.slice().reverse().map(e => {
+            {events.slice().reverse().slice(0, listLimit).map(e => {
               const isDibe = Number(e.basePay) > 0;
               return (
                 <div key={e.id} style={{background: '#f9f9f9', padding: '15px', borderRadius: '8px', borderLeft: isDibe ? '4px solid #ff9800' : '4px solid #ccc'}}>
@@ -106,6 +107,12 @@ export default function CalcPage() {
                 </div>
               );
             })}
+            
+            {events.length > listLimit && (
+              <button onClick={() => setListLimit(listLimit + 5)} style={{width: '100%', padding: '12px', marginTop: '10px', background: 'white', border: '1px solid #ccc', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', color: '#555'}}>
+                더보기 ∨
+              </button>
+            )}
           </div>
         )}
       </div>

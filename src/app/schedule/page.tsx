@@ -12,6 +12,7 @@ export default function SchedulePage() {
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [selectedModalDate, setSelectedModalDate] = useState<string | null>(null);
+  const [listLimit, setListLimit] = useState(5);
   const recognitionRef = useRef<any>(null);
   const transcriptRef = useRef<string>('');
 
@@ -301,8 +302,10 @@ export default function SchedulePage() {
       notification: event.notification || '없음',
       fee: event.fee === '' ? '' : String(event.fee)
     });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    setVoiceText('선택한 일정을 폼으로 불러왔습니다. 수정 후 저장 버튼을 누르면 업데이트됩니다.');
+    if (!selectedModalDate) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setVoiceText('선택한 일정을 폼으로 불러왔습니다. 수정 후 저장 버튼을 누르면 업데이트됩니다.');
+    }
   };
 
   const handleSyncCalendar = async (event: ScheduleEvent) => {
@@ -427,7 +430,7 @@ export default function SchedulePage() {
         
         <div style={{marginTop: '20px'}}>
           <h4 style={{borderBottom: '1px solid #eee', paddingBottom: '10px'}}>내 일정 리스트 (최근 순)</h4>
-          {events.slice().reverse().map(e => (
+          {events.slice().reverse().slice(0, listLimit).map(e => (
             <div key={e.id} style={{padding: '12px', background: '#f5f5f5', borderRadius: '8px', marginTop: '10px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '5px'}}>
               <div>
                 <strong>{e.date}{e.endDate && e.endDate !== e.date ? ` ~ ${e.endDate}` : ''} {e.start}~{e.end}</strong>
@@ -450,6 +453,11 @@ export default function SchedulePage() {
               </div>
             </div>
           ))}
+          {events.length > listLimit && (
+            <button onClick={() => setListLimit(listLimit + 5)} style={{width: '100%', padding: '10px', marginTop: '15px', background: 'white', border: '1px solid #ccc', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', color: '#555'}}>
+              더보기 ∨
+            </button>
+          )}
           {events.length === 0 && <p style={{fontSize: '0.9rem', color: '#999', marginTop: '10px'}}>저장된 일정이 없습니다.</p>}
         </div>
       </div>
@@ -520,47 +528,68 @@ export default function SchedulePage() {
             width: '90%', maxWidth: '400px', maxHeight: '80vh', overflowY: 'auto'
           }}>
             <h3 style={{marginTop: 0, borderBottom: '1px solid #eee', paddingBottom: '10px', display: 'flex', justifyContent: 'space-between'}}>
-              {selectedModalDate} 일정
-              <button onClick={() => setSelectedModalDate(null)} style={{background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer'}}>✖</button>
+              {editId ? '일정 수정' : `${selectedModalDate} 일정`}
+              <button onClick={() => { setSelectedModalDate(null); setEditId(null); }} style={{background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer'}}>✖</button>
             </h3>
             
-            {events.filter(e => e.date === selectedModalDate).map(e => (
-              <div key={e.id} style={{padding: '10px', background: '#f5f5f5', borderRadius: '5px', marginBottom: '10px'}}>
-                <div style={{fontWeight: 'bold'}}>{e.start}~{e.end}</div>
-                <div style={{color: '#444'}}>{e.institution} | {e.course}</div>
-                <div style={{display: 'flex', gap: '5px', marginTop: '10px'}}>
-                  <button onClick={() => {
-                    handleEditEvent(e);
-                    setSelectedModalDate(null);
-                  }} style={{flex: 1, padding: '8px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'}}>수정</button>
-                  <button onClick={() => {
-                    handleDeleteEvent(e.id);
-                  }} style={{flex: 1, padding: '8px', background: '#ff4d4f', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'}}>삭제</button>
+            {editId ? (
+              <form onSubmit={(e) => { handleManualSubmit(e); setSelectedModalDate(null); }} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                <div style={{display: 'flex', gap: '10px'}}>
+                  <input type="time" value={manualForm.start} onChange={e => setManualForm({...manualForm, start: e.target.value})} style={{flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+                  <span style={{lineHeight: '40px'}}>~</span>
+                  <input type="time" value={manualForm.end} onChange={e => setManualForm({...manualForm, end: e.target.value})} style={{flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
                 </div>
-              </div>
-            ))}
-            
-            {events.filter(e => e.date === selectedModalDate).length === 0 && (
-              <p style={{color: '#999', textAlign: 'center', padding: '20px 0'}}>등록된 일정이 없습니다.</p>
-            )}
+                <input type="text" placeholder="기관명" value={manualForm.institution} onChange={e => setManualForm({...manualForm, institution: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+                <input type="text" placeholder="과정명" value={manualForm.course} onChange={e => setManualForm({...manualForm, course: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+                <input type="number" placeholder="시간당 강사료" value={manualForm.fee} onChange={e => setManualForm({...manualForm, fee: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+                
+                <button type="submit" className="btn-primary" style={{width: '100%', padding: '10px', marginTop: '10px', fontWeight: 'bold', border: 'none', borderRadius: '5px', background: 'var(--primary)', color: 'white', cursor: 'pointer'}}>
+                  💾 저장
+                </button>
+                <button type="button" onClick={() => setEditId(null)} className="btn-secondary" style={{width: '100%', padding: '10px', background: '#ccc', color: '#333', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>
+                  취소
+                </button>
+              </form>
+            ) : (
+              <>
+                {events.filter(e => e.date === selectedModalDate).map(e => (
+                  <div key={e.id} style={{padding: '10px', background: '#f5f5f5', borderRadius: '5px', marginBottom: '10px'}}>
+                    <div style={{fontWeight: 'bold'}}>{e.start}~{e.end}</div>
+                    <div style={{color: '#444'}}>{e.institution} | {e.course}</div>
+                    <div style={{display: 'flex', gap: '5px', marginTop: '10px'}}>
+                      <button onClick={() => {
+                        handleEditEvent(e);
+                      }} style={{flex: 1, padding: '8px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'}}>수정</button>
+                      <button onClick={() => {
+                        handleDeleteEvent(e.id);
+                      }} style={{flex: 1, padding: '8px', background: '#ff4d4f', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'}}>삭제</button>
+                    </div>
+                  </div>
+                ))}
+                
+                {events.filter(e => e.date === selectedModalDate).length === 0 && (
+                  <p style={{color: '#999', textAlign: 'center', padding: '20px 0'}}>등록된 일정이 없습니다.</p>
+                )}
 
-            <button onClick={() => {
-              setEditId(null);
-              setManualForm({
-                ...manualForm,
-                date: selectedModalDate,
-                endDate: selectedModalDate,
-                course: '',
-                institution: '',
-                fee: '',
-                repeat: '없음',
-                notification: '없음'
-              });
-              setSelectedModalDate(null);
-              window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-            }} style={{width: '100%', padding: '12px', background: 'white', border: '1px solid var(--primary)', color: 'var(--primary)', borderRadius: '5px', marginTop: '10px', fontWeight: 'bold', cursor: 'pointer'}}>
-              + 새 일정 추가하기
-            </button>
+                <button onClick={() => {
+                  setEditId(null);
+                  setManualForm({
+                    ...manualForm,
+                    date: selectedModalDate,
+                    endDate: selectedModalDate,
+                    course: '',
+                    institution: '',
+                    fee: '',
+                    repeat: '없음',
+                    notification: '없음'
+                  });
+                  setSelectedModalDate(null);
+                  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                }} style={{width: '100%', padding: '12px', background: 'white', border: '1px solid var(--primary)', color: 'var(--primary)', borderRadius: '5px', marginTop: '10px', fontWeight: 'bold', cursor: 'pointer'}}>
+                  + 새 일정 추가하기
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
